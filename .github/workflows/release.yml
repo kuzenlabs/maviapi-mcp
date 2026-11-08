@@ -42,6 +42,17 @@ jobs:
           else
             npm publish --access public --provenance
           fi
+      # The registry checks the npm version exists, and a fresh publish takes a
+      # few minutes to show up on the registry's read side.
+      - name: Wait for the version to appear on npm
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 60); do
+            npm view "@maviapi/mcp@$v" version >/dev/null 2>&1 && exit 0
+            sleep 10
+          done
+          echo "@maviapi/mcp@$v still not visible on npm after 10 minutes" >&2
+          exit 1
       - name: Publish to the MCP Registry
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
