@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kuzenlabs/maviapi-mcp",
+  "title": "maviapi",
+  "description": "Live, structured JSON from websites with no API (Booking.com, Airbnb, Tripadvisor, Kiwi.com and more) via self-repairing maviapi endpoints.",
+  "version": "0.1.0",
+  "websiteUrl": "https://maviapi.com",
+  "repository": {
+    "url": "https://github.com/kuzenlabs/maviapi-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@maviapi/mcp",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "MAVIAPI_API_KEY",
+          "description": "maviapi API key. Optional: without it the server uses the shared demo key (30 requests a minute).",
+          "isSecret": true
+        },
+        {
+          "name": "MAVIAPI_TOOLS",
+          "description": "Comma-separated API slugs to expose as typed per-endpoint tools, or 'all'."
+        }
+      ]
+    }
+  ]
+}

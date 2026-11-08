@@ -1,0 +1,61 @@
+{
+  "name": "@maviapi/mcp",
+  "version": "0.1.0",
+  "description": "MCP server that gives AI agents live, structured JSON from websites with no official API (Booking.com, Airbnb, Tripadvisor, Kiwi.com, Hepsiburada and more), through self-repairing maviapi endpoints.",
+  "mcpName": "io.github.kuzenlabs/maviapi-mcp",
+  "type": "module",
+  "bin": {
+    "maviapi-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:live": "MAVIAPI_LIVE=1 vitest run test/live.test.ts",
+    "inspect": "pnpm build && npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "maviapi",
+    "web-scraping",
+    "web-data",
+    "api",
+    "ai-agents",
+    "claude",
+    "cursor"
+  ],
+  "author": "KuzenLabs <hello@maviapi.com>",
+  "license": "MIT",
+  "homepage": "https://maviapi.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kuzenlabs/maviapi-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kuzenlabs/maviapi-mcp/issues"
+  },
+  "packageManager": "pnpm@12.18.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

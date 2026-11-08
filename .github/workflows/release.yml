@@ -1,0 +1,43 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish @maviapi/mcp to npm (with provenance) and the
+# server to the official MCP Registry. Needs the repository secret NPM_TOKEN: an
+# npm automation token with publish rights on the @maviapi scope. The registry
+# step authenticates with this workflow's GitHub OIDC token, which proves
+# ownership of the io.github.kuzenlabs/* namespace.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Check the tag matches package.json and server.json
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          test "$(node -p 'require("./package.json").version')" = "$v"
+          test "$(node -p 'require("./server.json").version')" = "$v"
+      - run: pnpm typecheck && pnpm test && pnpm build
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
