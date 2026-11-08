@@ -1,10 +1,10 @@
 name: Release
 
-# Push a tag like v0.1.0 to publish @maviapi/mcp to npm (with provenance) and the
-# server to the official MCP Registry. Needs the repository secret NPM_TOKEN: an
-# npm automation token with publish rights on the @maviapi scope. The registry
-# step authenticates with this workflow's GitHub OIDC token, which proves
-# ownership of the io.github.kuzenlabs/* namespace.
+# Push a tag like v0.2.0 to publish @maviapi/mcp to npm and the server to the
+# official MCP Registry. Both authenticate with this workflow's GitHub OIDC
+# token: npm through Trusted Publishing (configured on the package for
+# kuzenlabs/maviapi-mcp + release.yml), the registry through the
+# io.github.kuzenlabs/* namespace. No long-lived token is stored anywhere.
 
 on:
   push:
@@ -25,6 +25,8 @@ jobs:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      # Trusted Publishing needs npm 11.5.1 or newer.
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - name: Check the tag matches package.json and server.json
         run: |
@@ -33,9 +35,13 @@ jobs:
           test "$(node -p 'require("./server.json").version')" = "$v"
       - run: pnpm typecheck && pnpm test && pnpm build
       - name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          if npm view "@maviapi/mcp@$v" version >/dev/null 2>&1; then
+            echo "@maviapi/mcp@$v is already on npm"
+          else
+            npm publish --access public --provenance
+          fi
       - name: Publish to the MCP Registry
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher

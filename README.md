@@ -19,10 +19,10 @@ Agents are bad at the web. Browsing is slow, burns tokens on raw HTML, and stall
 ### Claude Code
 
 ```bash
-claude mcp add maviapi -- npx -y github:kuzenlabs/maviapi-mcp
+claude mcp add maviapi -- npx -y @maviapi/mcp
 
 # with your own key
-claude mcp add maviapi -e MAVIAPI_API_KEY=mvk_live_... -- npx -y github:kuzenlabs/maviapi-mcp
+claude mcp add maviapi -e MAVIAPI_API_KEY=mvk_live_... -- npx -y @maviapi/mcp
 ```
 
 ### Claude Desktop, Cursor, Windsurf, and others
@@ -34,7 +34,7 @@ Add this to the client's MCP config (`claude_desktop_config.json`, `~/.cursor/mc
   "mcpServers": {
     "maviapi": {
       "command": "npx",
-      "args": ["-y", "github:kuzenlabs/maviapi-mcp"],
+      "args": ["-y", "@maviapi/mcp"],
       "env": { "MAVIAPI_API_KEY": "mvk_live_..." }
     }
   }
@@ -53,7 +53,7 @@ Leave out `env` to try it with the demo key.
   "servers": {
     "maviapi": {
       "command": "npx",
-      "args": ["-y", "github:kuzenlabs/maviapi-mcp"],
+      "args": ["-y", "@maviapi/mcp"],
       "env": { "MAVIAPI_API_KEY": "${input:maviapi-key}" }
     }
   }
@@ -73,7 +73,7 @@ Leave out `env` to try it with the demo key.
 A handful of generic tools keeps the agent's context small however large the catalog grows. If you rely on a few APIs, `MAVIAPI_TOOLS` also exposes each of their endpoints as its own typed tool, with a full input schema:
 
 ```bash
-claude mcp add maviapi -e MAVIAPI_TOOLS=booking,airbnb,kiwi -- npx -y github:kuzenlabs/maviapi-mcp
+claude mcp add maviapi -e MAVIAPI_TOOLS=booking,airbnb,kiwi -- npx -y @maviapi/mcp
 # adds booking_search, booking_explore, airbnb_listing_by_id, kiwi_search, …
 ```
 
