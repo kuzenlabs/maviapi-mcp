@@ -1,0 +1,13 @@
+{
+  "name": "maviapi",
+  "description": "Live JSON from sites with no API (Booking.com, Airbnb, Tripadvisor, Kiwi.com and more), plus agent-built APIs for any site. Runs the @maviapi/mcp server.",
+  "version": "0.1.0",
+  "author": {
+    "name": "KuzenLabs",
+    "url": "https://maviapi.com"
+  },
+  "homepage": "https://maviapi.com",
+  "repository": "https://github.com/kuzenlabs/maviapi-mcp",
+  "license": "MIT",
+  "keywords": ["mcp", "maviapi", "scraping", "web-data", "api"]
+}

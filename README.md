@@ -18,11 +18,22 @@ Agents are bad at the web. Browsing is slow, burns tokens on raw HTML, and stall
 
 ### Claude Code
 
+Install it as a plugin from this repo's marketplace:
+
+```
+/plugin marketplace add kuzenlabs/maviapi-mcp
+/plugin install maviapi@maviapi
+```
+
+The plugin reads `MAVIAPI_API_KEY` (and `MAVIAPI_TOOLS`) from your environment, so export your key before starting Claude Code to use it instead of the demo key.
+
+Or add the server directly. Quote the package name so zsh doesn't offer to "correct" the `@` scope away:
+
 ```bash
-claude mcp add maviapi -- npx -y @maviapi/mcp
+claude mcp add maviapi -- npx -y '@maviapi/mcp'
 
 # with your own key
-claude mcp add maviapi -e MAVIAPI_API_KEY=mvk_live_... -- npx -y @maviapi/mcp
+claude mcp add maviapi -e MAVIAPI_API_KEY=mvk_live_... -- npx -y '@maviapi/mcp'
 ```
 
 ### Claude Desktop, Cursor, Windsurf, and others
@@ -73,7 +84,7 @@ Leave out `env` to try it with the demo key.
 A handful of generic tools keeps the agent's context small however large the catalog grows. If you rely on a few APIs, `MAVIAPI_TOOLS` also exposes each of their endpoints as its own typed tool, with a full input schema:
 
 ```bash
-claude mcp add maviapi -e MAVIAPI_TOOLS=booking,airbnb,kiwi -- npx -y @maviapi/mcp
+claude mcp add maviapi -e MAVIAPI_TOOLS=booking,airbnb,kiwi -- npx -y '@maviapi/mcp'
 # adds booking_search, booking_explore, airbnb_listing_by_id, kiwi_search, …
 ```
 

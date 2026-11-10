@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "maviapi": {
+      "command": "npx",
+      "args": ["-y", "@maviapi/mcp"],
+      "env": {
+        "MAVIAPI_API_KEY": "${MAVIAPI_API_KEY:-}",
+        "MAVIAPI_TOOLS": "${MAVIAPI_TOOLS:-}"
+      }
+    }
+  }
+}

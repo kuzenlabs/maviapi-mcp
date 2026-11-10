@@ -1,0 +1,20 @@
+{
+  "name": "maviapi",
+  "owner": {
+    "name": "KuzenLabs",
+    "url": "https://maviapi.com"
+  },
+  "metadata": {
+    "description": "Claude Code plugin for maviapi: live, structured JSON from websites that have no API.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "maviapi",
+      "source": "./plugin",
+      "description": "Live JSON from sites with no API (Booking.com, Airbnb, Tripadvisor, Kiwi.com and more), plus agent-built APIs for any site.",
+      "category": "data",
+      "homepage": "https://maviapi.com"
+    }
+  ]
+}
