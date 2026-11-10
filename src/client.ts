@@ -66,7 +66,7 @@ export class MaviapiClient {
     return value;
   }
 
-  /** Drop the cached catalog, e.g. once a build has published a new API. */
+  /** Drop the cached catalog before checking whether an API is public. */
   invalidateCatalog(): void {
     this.catalog = null;
   }

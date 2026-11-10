@@ -1,6 +1,6 @@
 {
   "name": "@maviapi/mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server that gives AI agents live, structured JSON from websites with no official API (Booking.com, Airbnb, Tripadvisor, Kiwi.com, Hepsiburada and more), through self-repairing maviapi endpoints.",
   "mcpName": "io.github.kuzenlabs/maviapi-mcp",
   "type": "module",

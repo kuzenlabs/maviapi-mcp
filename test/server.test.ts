@@ -206,8 +206,13 @@ describe("create_api / get_build_status", () => {
   };
 
   /** A gateway that serves the build routes; `onBuild` answers POST /v1/requests. */
-  function buildFetch(onBuild: () => Response, status: () => Record<string, unknown> = () => BUILD) {
+  function buildFetch(
+    onBuild: () => Response,
+    status: () => Record<string, unknown> = () => BUILD,
+    catalog: () => Response | undefined = () => undefined,
+  ) {
     return fakeFetch((url) => new Response("unused", { status: 500, statusText: url.pathname }), (url, init) => {
+      if (url.pathname === "/v1/apis") return catalog();
       if (url.pathname === "/v1/requests" && init?.method === "POST") return onBuild();
       if (url.pathname === "/v1/requests/req-1") return Response.json(status());
       if (url.pathname.startsWith("/v1/requests/")) return Response.json({ error: "Not found" }, { status: 404 });
@@ -222,6 +227,8 @@ describe("create_api / get_build_status", () => {
     expect(res.isError).toBe(false);
     expect(res.text).toContain("request_id: req-1");
     expect(res.text).toContain("3 free builds per 30 days");
+    expect(res.text).toContain("does not give you an owner dashboard session");
+    expect(res.text).not.toContain("once it is published, get_api and call_api");
 
     const sent = fetch.calls.find((c) => c.url.pathname === "/v1/requests")!;
     expect(sent.method).toBe("POST");
@@ -277,7 +284,7 @@ describe("create_api / get_build_status", () => {
     expect((await call("create_api", { url: "ftp://files.example.com", description: "x" })).isError).toBe(true);
   });
 
-  it("follows a build to published and refreshes the catalog", async () => {
+  it("keeps completed private drafts distinct from public APIs and refreshes the catalog", async () => {
     let current: Record<string, unknown> = {
       ...BUILD,
       status: "building",
@@ -296,9 +303,49 @@ describe("create_api / get_build_status", () => {
     const before = catalogFetches();
     current = { ...BUILD, status: "published", slug: "hackernews" };
     const done = await call("get_build_status", { request_id: "req-1" });
-    expect(done.text).toContain('The API is live as "hackernews"');
+    expect(done.text).toContain('Build completed.');
+    expect(done.text).toContain('API "hackernews" is not in the public catalog yet.');
+    expect(done.text).not.toContain("The API is live");
     await call("search_apis");
     expect(catalogFetches()).toBe(before + 1);
+  });
+
+  it("does not confuse an existing public API with its new candidate build", async () => {
+    const fetch = buildFetch(
+      () => Response.json(BUILD, { status: 201 }),
+      () => ({ ...BUILD, status: "published", slug: "airbnb" }),
+    );
+    const { call } = await connect({ MAVIAPI_API_KEY: "mvk_test_owner" }, fetch.impl);
+    const done = await call("get_build_status", { request_id: "req-1" });
+    expect(done.isError).toBe(false);
+    expect(done.text).toContain('API "airbnb" is in the public catalog.');
+    expect(done.text).toContain("this completed build may still await owner publication");
+    expect(done.text).toContain("https://maviapi.com/dashboard/requests?");
+    expect(done.text).not.toContain("The API is live");
+  });
+
+  it("preserves build completion when catalog availability cannot be verified", async () => {
+    const fetch = buildFetch(
+      () => Response.json(BUILD, { status: 201 }),
+      () => ({ ...BUILD, status: "published", slug: "hackernews" }),
+      () => Response.json({ error: "unavailable" }, { status: 503 }),
+    );
+    const done = await (await connect({}, fetch.impl)).call("get_build_status", { request_id: "req-1" });
+    expect(done.isError).toBe(false);
+    expect(done.text).toContain("Build completed.");
+    expect(done.text).toContain("Could not verify public catalog visibility");
+    expect(done.text).not.toContain("not in the public catalog yet");
+    expect(done.text).not.toContain("The API is live");
+  });
+
+  it("does not keep polling a completed build with no slug", async () => {
+    const fetch = buildFetch(
+      () => Response.json(BUILD, { status: 201 }),
+      () => ({ ...BUILD, status: "published", slug: null }),
+    );
+    const done = await (await connect({}, fetch.impl)).call("get_build_status", { request_id: "req-1" });
+    expect(done.text).toContain("Build completed.");
+    expect(done.text).not.toContain("Still in progress");
   });
 
   it("explains a failed build and an unknown id", async () => {
