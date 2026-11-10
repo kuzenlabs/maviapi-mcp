@@ -84,9 +84,9 @@ const GENERIC_TOOLS: Tool[] = [
     name: "create_api",
     title: "Build a new maviapi API",
     description:
-      "Get an API built for a website that no catalog API covers. maviapi's build agent studies the site and deploys a hosted, " +
-      "self-repairing JSON API from a plain-language description of the data you want. A build takes about half an hour: this " +
-      "returns a request_id at once, then follow it with get_build_status. " +
+      "Start an API draft for a website that no catalog API covers. maviapi's build agent studies the site and builds " +
+      "a JSON API from a plain-language description. This returns a request_id at once; follow it with get_build_status. " +
+      "Build completion does not publish the API. Use your own account and key to review and publish the draft in the dashboard. " +
       `With the shared demo key each network gets ${PLAYGROUND_FREE_BUILDS} free builds per 30 days.`,
     inputSchema: {
       type: "object",
@@ -112,8 +112,9 @@ const GENERIC_TOOLS: Tool[] = [
     title: "Check a maviapi build",
     description:
       "Progress of a build started with create_api: queued, building, deploying, published, or failed. " +
-      "Once published it names the new API's slug, ready for get_api and call_api. Builds take about half an hour, " +
-      "so check back every few minutes rather than in a tight loop.",
+      "The build status published means the build completed, not that the API is publicly available. " +
+      "Checks catalog visibility separately; the owner reviews and publishes drafts in the dashboard. " +
+      "Check back every few minutes rather than in a tight loop.",
     inputSchema: {
       type: "object",
       properties: {
@@ -390,8 +391,8 @@ export class Toolset {
         `request_id: ${payload.id}`,
         `status: ${payload.status ?? "queued"}`,
         "",
-        "A build usually takes about half an hour. Check it with get_build_status (every few minutes is plenty); " +
-          "once it is published, get_api and call_api can use the new API.",
+        "Check progress with get_build_status every few minutes. Build completion does not make the API public.",
+        this.publicationGuidance(),
       ];
       if (this.config.usingPlaygroundKey) {
         out.push(
@@ -430,10 +431,22 @@ export class Toolset {
     const recent = (build.progress ?? []).slice(-3).map((p) => `- ${p.message}`);
     if (recent.length) out.push("Latest progress:", ...recent);
 
-    if (build.status === "published" && build.slug) {
-      // The new API is in the catalog now; make search_apis and get_api see it.
-      this.client.invalidateCatalog();
-      out.push("", `The API is live as "${build.slug}". Call get_api with "${build.slug}" to see its endpoints.`);
+    if (build.status === "published") {
+      out.push("", 'Build completed. The build status "published" does not confirm that this build is public.');
+      if (build.slug) {
+        // A first build stays private until owner publication. An existing
+        // public API can also have a new candidate that is not released yet.
+        this.client.invalidateCatalog();
+        try {
+          const listed = (await this.client.listApis()).some((api) => api.slug === build.slug);
+          out.push(listed
+            ? `API "${build.slug}" is in the public catalog. get_api and call_api use its current public build; this completed build may still await owner publication.`
+            : `API "${build.slug}" is not in the public catalog yet. Review and publish the draft before using get_api or call_api.`);
+        } catch {
+          out.push(`Could not verify public catalog visibility for "${build.slug}". Do not assume the completed build is callable; check again later.`);
+        }
+      }
+      out.push(this.publicationGuidance());
     } else if (build.status === "failed") {
       out.push(
         "",
@@ -443,6 +456,14 @@ export class Toolset {
       out.push("", "Still in progress. Check again in a few minutes.");
     }
     return text(out.join("\n"));
+  }
+
+  private publicationGuidance(): string {
+    return this.config.usingPlaygroundKey
+      ? "The shared demo key does not give you an owner dashboard session for this draft. " +
+          `To review and publish your own build, create an account at ${siteLink("/sign-up", "build_publication")} ` +
+          "and start the build with your personal MAVIAPI_API_KEY."
+      : `The owner can review and publish the draft at ${siteLink("/dashboard/requests", "build_publication")}.`;
   }
 
   /** Typed per-endpoint tools for the APIs named in MAVIAPI_TOOLS. */

@@ -12,7 +12,7 @@ Agents are bad at the web. Browsing is slow, burns tokens on raw HTML, and stall
 
 **Works with no setup.** Out of the box it uses maviapi's shared demo key: 30 requests a minute and 300 a day per network, plus 3 free API builds per 30 days. [Create a free key](https://maviapi.com/sign-up?utm_source=github&utm_medium=readme&utm_campaign=mcp) for more.
 
-**Missing a site? Your agent can have it built.** `create_api` hands maviapi's build agent a URL and a description of the data you want; about half an hour later the new API is live and callable from the same session.
+**Missing a site? Your agent can start a draft.** `create_api` hands maviapi's build agent a URL and a description of the data you want. Follow progress with `get_build_status`, then review and publish the draft from your account before calling the public API. Build duration depends on the site and requested endpoints.
 
 ## Install
 
@@ -79,7 +79,7 @@ Leave out `env` to try it with the demo key.
 | `get_api` | An API's endpoints, their parameters, and the fields each one returns. |
 | `call_api` | Call an endpoint and get live JSON back. List endpoints return 10 results unless you pass `limit`. |
 | `create_api` | No API for the site you need? Starts a build from a URL and a plain-language description, and returns a `request_id`. |
-| `get_build_status` | Follows a build to `published` (then `get_api` and `call_api` work on it) or `failed`. Builds take about half an hour. |
+| `get_build_status` | Follows build progress and checks public catalog visibility separately. A `published` build status means completion; the owner still reviews and publishes the draft. |
 
 A handful of generic tools keeps the agent's context small however large the catalog grows. If you rely on a few APIs, `MAVIAPI_TOOLS` also exposes each of their endpoints as its own typed tool, with a full input schema:
 
@@ -99,7 +99,9 @@ claude mcp add maviapi -e MAVIAPI_TOOLS=booking,airbnb,kiwi -- npx -y '@maviapi/
 
 `search_apis` with no query lists everything currently in the catalog. And for a site that is not there yet:
 
-- "Build me an API for news.ycombinator.com with the front page stories, points and comment counts, then show me today's top 5."
+- "Start an API build for news.ycombinator.com with front-page stories, points and comment counts."
+
+Use your own account and API key when you need to review and publish a build from the [dashboard](https://maviapi.com/dashboard/requests). The shared demo key can start builds, but does not provide an owner dashboard session for them. If an API is already public, `get_api` and `call_api` use its current public build; a newly completed candidate may still await publication.
 
 ## Configuration
 
