@@ -32,6 +32,7 @@ export const REQUEST_TOOLS: Tool[] = [
       "Existing endpoints never change: a change ships as a new endpoint beside the old one (e.g. /search-v2). " +
       "Without `confirm` nothing is built: the tool answers with the endpoint as it would be built, for the user to agree to. " +
       "Call it again with the same arguments and `confirm: true` to start the build (about half an hour). " +
+      "One build of an API runs at a time: a request made while another is building waits in line and starts on its own. " +
       "Needs an API key with the requests:write permission. Follow the build with get_build_status.",
     inputSchema: {
       type: "object",
@@ -137,6 +138,34 @@ export const REQUEST_TOOLS: Tool[] = [
     annotations: { ...WRITE, destructiveHint: true, idempotentHint: true },
   },
   {
+    name: "report_endpoint_issue",
+    title: "Report a broken maviapi endpoint",
+    description:
+      "Tell maviapi that an endpoint that exists returns the wrong thing: it fails, comes back empty, or repeats the same page. " +
+      "Use this instead of asking for a changed version when the endpoint is simply broken: the fix lands on the endpoint itself, for everyone. " +
+      "maviapi replays the call at once. If it reproduces the fault a repair starts on its own; if not, a person reads the report. " +
+      "Pass the `params` of a call that shows the fault. Without `endpoint` and `description` it lists the reports made with this key. " +
+      "Needs an API key with the requests:write permission (any request permission to list).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        api: { type: "string", description: 'API slug (e.g. "booking") or the site\'s domain.' },
+        endpoint: { type: "string", description: 'The endpoint\'s name or path, e.g. "/restaurants".' },
+        description: {
+          type: "string",
+          description:
+            'What is wrong, in a sentence or two: what you asked for, what came back, what you expected. E.g. "page=2 returns the same 30 restaurants as page 1."',
+        },
+        params: {
+          type: "object",
+          description: 'The parameters of a call that shows the fault, e.g. {"geo": "187147", "page": 2}.',
+          additionalProperties: true,
+        },
+      },
+    },
+    annotations: WRITE,
+  },
+  {
     name: "get_key_info",
     title: "Show this maviapi key",
     description:
@@ -163,6 +192,12 @@ export const REQUEST_TOOLS: Tool[] = [
 ];
 
 const NAMES = new Set(REQUEST_TOOLS.map((t) => t.name));
+
+/** Where a report stands, in the API's own sentence when it sent one. */
+function describeReport(report: Record<string, unknown>): string {
+  if (typeof report.message === "string" && report.message) return report.message;
+  return `status ${String(report.status ?? "unknown")}`;
+}
 
 /** The status answer of GET /v1/me/requests/:id/status. */
 export interface RequestStatus {
@@ -281,6 +316,8 @@ export class RequestTools {
         return this.publish(args);
       case "cancel_request":
         return this.cancel(args);
+      case "report_endpoint_issue":
+        return this.reportIssue(args);
       case "get_key_info":
         return this.keyInfo();
     }
@@ -361,8 +398,8 @@ export class RequestTools {
       if (result.status === 409 && body.error === "extension_in_progress") {
         const own = typeof body.requestId === "string" ? ` It is your own request: ${body.requestId}.` : "";
         return failure(
-          `${String(body.message ?? "Another endpoint is being built for this API right now.")}${own} ` +
-            "One build of an API runs at a time, so ask again once it has finished (builds take about half an hour).",
+          `${String(body.message ?? "The line of requests for this API is full.")}${own} ` +
+            "An API holds 3 requests at a time, so ask again once one has finished (builds take about half an hour).",
         );
       }
       return failure(this.refusal(result));
@@ -378,11 +415,17 @@ export class RequestTools {
         "Show this to the user. If they agree, call request_endpoint again with the same arguments and confirm: true.",
         "A build takes about half an hour; an account can start 2 an hour and 5 a day.",
       ];
-      if (body.building) {
+      if (body.accepted === false) {
         out.push(
           "",
-          `Note: GET ${String(body.building).replace(/^GET /, "")} is being built for this API right now. ` +
-            "One build runs at a time, so this one can start once that has finished.",
+          "Note: the line of requests for this API is full (3 at a time), so this one would be refused right now. Ask again once one of them has finished.",
+        );
+      } else if (body.building) {
+        const ahead = typeof body.ahead === "number" && body.ahead > 1 ? ` and ${body.ahead - 1} more ahead of it` : "";
+        out.push(
+          "",
+          `Note: GET ${String(body.building).replace(/^GET /, "")} is being built for this API right now${ahead}. ` +
+            "One build runs at a time, so this one would wait in line and start on its own when they have finished.",
         );
       }
       return text(out.join("\n"));
@@ -390,15 +433,81 @@ export class RequestTools {
 
     const id = String(body.id ?? "");
     const built = (body.extension ?? {}) as { path?: string };
+    const waitingFor = typeof body.waitingFor === "string" ? body.waitingFor : null;
     return text(
       [
-        `Build started: GET ${built.path ?? ask.path ?? ""} on ${api.slug}.`,
+        waitingFor
+          ? `Request accepted: GET ${built.path ?? ask.path ?? ""} on ${api.slug}. It waits in line behind GET ${waitingFor.replace(/^GET /, "")} and starts building on its own when that has finished.`
+          : `Build started: GET ${built.path ?? ask.path ?? ""} on ${api.slug}.`,
         `request_id: ${id}`,
         `status: ${String(body.status ?? "queued")}`,
         "",
         `Follow it with get_build_status {"request_id": "${id}", "wait_seconds": ${MAX_WAIT_SECONDS}}: it returns as soon as something changes.`,
         "When it is ready, try it with call_draft, then publish_request makes it live.",
       ].join("\n"),
+    );
+  }
+
+  private async reportIssue(args: Record<string, unknown>): Promise<CallToolResult> {
+    const endpointArg = stringArg(args, "endpoint");
+    const description = stringArg(args, "description");
+    if (!endpointArg && !description) return this.listReports();
+
+    const api = await this.deps.resolveApi(stringArg(args, "api", true));
+    if (!endpointArg || !description) {
+      throw new UserError("Pass both `endpoint` (which one) and `description` (what is wrong).");
+    }
+    const endpoints = await this.client.listEndpoints(api.slug);
+    const endpoint = findEndpoint(endpoints, endpointArg);
+    if (!endpoint) {
+      throw new UserError(
+        `${api.slug} has no endpoint "${endpointArg}". Its endpoints: ${endpoints.map((e) => e.path).join(", ")}.`,
+      );
+    }
+    const params = objectArg(args, "params");
+    const result = await this.client.reportEndpoint(api.slug, {
+      path: endpoint.path,
+      description,
+      ...(Object.keys(params).length > 0 && { params }),
+    });
+    const body = payloadOf(result);
+    if (!result.ok) {
+      if (result.status === 409 && body.error === "already_reported") {
+        return failure(
+          `${String(body.message ?? "You already reported this endpoint today.")} ` +
+            "Call report_endpoint_issue with no arguments to see where that report stands.",
+        );
+      }
+      return failure(this.refusal(result));
+    }
+    return text(
+      [
+        `Report ${String(body.id ?? "")} on GET ${endpoint.path} of ${api.slug}: ${describeReport(body)}`,
+        ...(typeof body.found === "string" ? [`What maviapi saw: ${body.found}`] : []),
+        "",
+        body.status === "confirmed"
+          ? "Nothing more to do: the endpoint keeps its path, so the same call works once the repair is live. " +
+            "get_api shows the endpoint's health; report_endpoint_issue with no arguments shows where this report stands."
+          : "If the fault only shows with certain parameters, they are in the report for the person who reads it. " +
+            "If you need different behavior rather than a fix, request_endpoint with `change` builds a new version beside this one.",
+      ].join("\n"),
+    );
+  }
+
+  private async listReports(): Promise<CallToolResult> {
+    const result = await this.client.listReports();
+    if (!result.ok) return failure(this.refusal(result));
+    const rows = (Array.isArray(payloadOf(result).reports) ? payloadOf(result).reports : []) as Array<
+      Record<string, unknown>
+    >;
+    if (rows.length === 0) return text("No endpoint has been reported with this key's account.");
+    return text(
+      rows
+        .map(
+          (r) =>
+            `${String(r.id)}  ${String(r.slug)} GET ${String(r.path)}  ${String(r.status)}\n  ${describeReport(r)}`,
+        )
+        .join("\n"),
     );
   }
 

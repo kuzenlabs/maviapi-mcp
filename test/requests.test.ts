@@ -144,10 +144,50 @@ describe("request_endpoint", () => {
     expect(body.messages).toEqual([{ role: "user", content: long }]);
   });
 
-  it("explains a build already running, a taken path and a missing permission", async () => {
+  it("says when a request waits in line, and when the line is full", async () => {
+    const answers: Response[] = [
+      Response.json({
+        dryRun: true,
+        slug: "booking",
+        endpoint: { method: "GET", path: "/reviews", summary: "The reviews of one hotel." },
+        building: "/photos",
+        ahead: 2,
+        accepted: true,
+      }),
+      Response.json(
+        { id: "req-10", status: "queued", kind: "extend", slug: "booking", extension: { path: "/reviews" }, waitingFor: "/photos" },
+        { status: 201 },
+      ),
+      Response.json({
+        dryRun: true,
+        slug: "booking",
+        endpoint: { method: "GET", path: "/reviews", summary: "The reviews of one hotel." },
+        building: "/photos",
+        ahead: 3,
+        accepted: false,
+      }),
+    ];
+    const fetch = backend({ [ASK]: () => answers.shift()! });
+    const call = await connect(fetch.impl);
+    const args = { api: "booking", path: "/reviews", description: "The reviews of one hotel." };
+
+    const preview = await call("request_endpoint", args);
+    expect(preview.text).toContain("GET /photos is being built for this API right now and 1 more ahead of it");
+    expect(preview.text).toContain("would wait in line and start on its own");
+
+    const queued = await call("request_endpoint", { ...args, confirm: true });
+    expect(queued.isError).toBe(false);
+    expect(queued.text).toContain("Request accepted: GET /reviews on booking. It waits in line behind GET /photos");
+    expect(queued.text).toContain("request_id: req-10");
+
+    const full = await call("request_endpoint", args);
+    expect(full.text).toContain("the line of requests for this API is full");
+  });
+
+  it("explains a full line, a taken path and a missing permission", async () => {
     const answers: Response[] = [
       Response.json(
-        { error: "extension_in_progress", message: "GET /photos is being built for this API right now. Ask for yours once it has landed.", path: "/photos", requestId: "req-3" },
+        { error: "extension_in_progress", message: "3 endpoints are already being built or waiting for this API. Ask for yours once one of them has landed.", path: "/photos", requestId: "req-3" },
         { status: 409 },
       ),
       Response.json(
@@ -163,7 +203,7 @@ describe("request_endpoint", () => {
     const busy = await call("request_endpoint", args);
     expect(busy.isError).toBe(true);
     expect(busy.text).toContain("It is your own request: req-3.");
-    expect(busy.text).toContain("One build of an API runs at a time");
+    expect(busy.text).toContain("An API holds 3 requests at a time");
 
     const taken = await call("request_endpoint", args);
     expect(taken.text).toContain("already exists");
@@ -464,5 +504,107 @@ describe("helpers", () => {
         new_required_params: [{ endpoint: "/d", param: "id" }],
       }),
     ).toBe("added /a; removed /b; fields changed type: /c data.x (string to number); new required parameters: /d id");
+  });
+});
+
+describe("report_endpoint_issue", () => {
+  const REPORT = "POST /v1/me/apis/booking/endpoint-reports";
+  const LIST = "GET /v1/me/endpoint-reports";
+  const CONFIRMED = {
+    id: "er_1",
+    slug: "booking",
+    path: "/search",
+    status: "confirmed",
+    message: "We reproduced it. A repair is under way: the endpoint keeps its path and its contract, so nothing changes for you except the answer.",
+    found: "The endpoint returns its first page for every page.",
+  };
+
+  it("reports the endpoint with the failing call and says what maviapi saw", async () => {
+    const fetch = backend({ [REPORT]: () => Response.json(CONFIRMED, { status: 201 }) });
+    const call = await connect(fetch.impl);
+    const res = await call("report_endpoint_issue", {
+      api: "booking",
+      endpoint: "search",
+      description: "offset=50 returns the same stays as offset=0.",
+      params: { location: "Istanbul", offset: 50 },
+    });
+    expect(res.isError).toBe(false);
+    expect(res.text).toContain("Report er_1 on GET /search of booking: We reproduced it.");
+    expect(res.text).toContain("What maviapi saw: The endpoint returns its first page for every page.");
+    expect(res.text).toContain("the endpoint keeps its path");
+
+    const sent = JSON.parse(fetch.calls.find((c) => c.method === "POST")!.body!);
+    expect(sent).toEqual({
+      path: "/search",
+      description: "offset=50 returns the same stays as offset=0.",
+      params: { location: "Istanbul", offset: 50 },
+    });
+  });
+
+  it("points at a changed version when the report was not reproduced", async () => {
+    const fetch = backend({
+      [REPORT]: () =>
+        Response.json(
+          { ...CONFIRMED, status: "received", message: "We replayed the call and could not reproduce a fault automatically, so a person on the team will read your report.", found: null },
+          { status: 201 },
+        ),
+    });
+    const call = await connect(fetch.impl);
+    const res = await call("report_endpoint_issue", {
+      api: "booking",
+      endpoint: "/search",
+      description: "The prices look like they are in the wrong currency.",
+    });
+    expect(res.text).toContain("a person on the team will read your report");
+    expect(res.text).toContain("request_endpoint with `change`");
+    expect(JSON.parse(fetch.calls.find((c) => c.method === "POST")!.body!).params).toBeUndefined();
+  });
+
+  it("refuses an endpoint the API does not have, before calling maviapi", async () => {
+    const fetch = backend({ [REPORT]: () => Response.json(CONFIRMED, { status: 201 }) });
+    const call = await connect(fetch.impl);
+    const res = await call("report_endpoint_issue", {
+      api: "booking",
+      endpoint: "/reviews",
+      description: "It returns nothing at all for any hotel.",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('booking has no endpoint "/reviews"');
+    expect(fetch.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("explains a repeat and a missing permission", async () => {
+    const answers: Response[] = [
+      Response.json(
+        { error: "already_reported", message: "You reported this endpoint in the last day. That report still stands.", reportId: "er_1" },
+        { status: 409 },
+      ),
+      Response.json({ error: "missing_scope", scope: "requests:write", message: "no" }, { status: 403 }),
+    ];
+    const fetch = backend({ [REPORT]: () => answers.shift()! });
+    const call = await connect(fetch.impl);
+    const args = { api: "booking", endpoint: "search", description: "offset=50 returns the same stays as offset=0." };
+
+    const again = await call("report_endpoint_issue", args);
+    expect(again.isError).toBe(true);
+    expect(again.text).toContain("That report still stands.");
+    expect(again.text).toContain("with no arguments");
+
+    const denied = await call("report_endpoint_issue", args);
+    expect(denied.isError).toBe(true);
+    expect(denied.text).toContain("requests:write");
+  });
+
+  it("lists the reports made with the key when called with no arguments", async () => {
+    const fetch = backend({
+      [LIST]: () => Response.json({ reports: [{ ...CONFIRMED, status: "fixed", message: "This was repaired. The endpoint answers correctly again." }] }),
+    });
+    const call = await connect(fetch.impl);
+    const res = await call("report_endpoint_issue");
+    expect(res.text).toContain("er_1  booking GET /search  fixed");
+    expect(res.text).toContain("This was repaired.");
+
+    const none = await connect(backend({ [LIST]: () => Response.json({ reports: [] }) }).impl);
+    expect((await none("report_endpoint_issue")).text).toContain("No endpoint has been reported");
   });
 });

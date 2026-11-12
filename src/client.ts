@@ -123,6 +123,16 @@ export class MaviapiClient {
     return this.send("POST", `/v1/me/apis/${encodeURIComponent(slug)}/endpoint-requests`, ask);
   }
 
+  /** Report an endpoint that answers wrongly (POST /v1/me/apis/:slug/endpoint-reports). */
+  reportEndpoint(slug: string, report: Record<string, unknown>): Promise<CallResult> {
+    return this.send("POST", `/v1/me/apis/${encodeURIComponent(slug)}/endpoint-reports`, report);
+  }
+
+  /** The key owner's reports and where each stands (GET /v1/me/endpoint-reports). */
+  listReports(): Promise<CallResult> {
+    return this.send("GET", "/v1/me/endpoint-reports");
+  }
+
   /** The key owner's requests (GET /v1/me/requests). */
   listRequests(filter: { slug?: string; status?: string }): Promise<CallResult> {
     return this.send("GET", `/v1/me/requests${buildQuery(filter)}`);

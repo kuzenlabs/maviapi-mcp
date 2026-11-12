@@ -29,6 +29,7 @@ const REQUEST = [
   "call_draft",
   "publish_request",
   "cancel_request",
+  "report_endpoint_issue",
   "get_key_info",
   "get_changelog",
 ];
