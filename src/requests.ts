@@ -32,7 +32,7 @@ export const REQUEST_TOOLS: Tool[] = [
       "Existing endpoints never change: a change ships as a new endpoint beside the old one (e.g. /search-v2). " +
       "Without `confirm` nothing is built: the tool answers with the endpoint as it would be built, for the user to agree to. " +
       "Call it again with the same arguments and `confirm: true` to start the build (about half an hour). " +
-      "Needs your own API key. Follow the build with get_build_status.",
+      "Needs an API key with the requests:write permission. Follow the build with get_build_status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -62,7 +62,7 @@ export const REQUEST_TOOLS: Tool[] = [
     title: "List my maviapi requests",
     description:
       "The API and endpoint requests made with this account, newest first, with their status. " +
-      "Filter by `api` (slug) or `status` (queued, building, deploying, published, failed). Needs your own API key.",
+      "Filter by `api` (slug) or `status` (queued, building, deploying, published, failed). Needs an API key with a request permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -78,7 +78,7 @@ export const REQUEST_TOOLS: Tool[] = [
     description:
       "Say something to the build of a request, in plain words: add detail, ask it to fix or drop an endpoint that failed, " +
       'or to try again after a failure (e.g. "fix /reviews", "also return the review date", "try again"). ' +
-      "Returns the build's answer. Needs your own API key.",
+      "Returns the build's answer. Needs an API key with the requests:write permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -94,7 +94,7 @@ export const REQUEST_TOOLS: Tool[] = [
     title: "Call a draft maviapi endpoint",
     description:
       "Call an endpoint of a request's draft before it is published, to check it returns the right data. " +
-      "Only endpoints get_build_status shows as ready answer. Draft calls cost no credits. Needs your own API key.",
+      "Only endpoints get_build_status shows as ready answer. Draft calls cost no credits. Needs an API key with a request permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -126,7 +126,7 @@ export const REQUEST_TOOLS: Tool[] = [
     name: "cancel_request",
     title: "Cancel a maviapi build",
     description:
-      "Stop the build that is running for a request. What was built before stays as it was. Needs your own API key.",
+      "Stop the build that is running for a request. What was built before stays as it was. Needs an API key with the requests:write permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -141,7 +141,7 @@ export const REQUEST_TOOLS: Tool[] = [
     title: "Show this maviapi key",
     description:
       "What the configured API key may do: its permissions, the account's plan and remaining credits, and the limits that apply. " +
-      "Check it before starting something that needs a permission or uses credits. Needs your own API key.",
+      "Check it before starting something that needs a permission or uses credits. Needs an API key with a request permission.",
     inputSchema: { type: "object", properties: {} },
     annotations: READ,
   },
@@ -300,12 +300,17 @@ export class RequestTools {
     const body = payloadOf(result);
     const message = typeof body.message === "string" ? body.message : "";
     if (result.status === 403 && body.error === "missing_scope") {
-      const scope = String(body.scope ?? "the needed");
+      if (body.scope === "requests:publish") {
+        return (
+          "This API key may not publish (it has no requests:publish permission). " +
+          `The user can publish from ${siteLink("/dashboard/requests", "missing_scope")}, or create a key with "Publish builds" turned on at ` +
+          `${siteLink("/dashboard/keys", "missing_scope")} and set it as MAVIAPI_API_KEY.`
+        );
+      }
       return (
-        `This API key does not have the ${scope} permission. ` +
-        (scope === "requests:publish"
-          ? `The user can publish from ${siteLink("/dashboard/requests", "missing_scope")}, or create a key that may publish at ${siteLink("/dashboard/keys", "missing_scope")} and set it as MAVIAPI_API_KEY.`
-          : `Create a key with it at ${siteLink("/dashboard/keys", "missing_scope")} and set it as MAVIAPI_API_KEY.`)
+        "This API key only calls data APIs: it has no request permissions (requests:write). " +
+        `The user can create a key with "Start and manage builds" turned on at ${siteLink("/dashboard/keys", "missing_scope")} ` +
+        "and set it as MAVIAPI_API_KEY in this server's config."
       );
     }
     if (result.status === 403 && body.error === "session_required") {
@@ -625,7 +630,9 @@ export class RequestTools {
         (can("requests:publish") ? ", and publish them" : "") +
         ".",
     ];
-    if (!can("requests:write")) out.push("It cannot start builds (no requests:write permission).");
+    if (!can("requests:write")) {
+      out.push("It cannot ask for endpoints or manage builds (no requests:write permission).");
+    }
     if (!can("requests:publish")) {
       out.push(
         `It cannot publish (no requests:publish permission): the user publishes at ${siteLink("/dashboard/requests", "key_info")}, or creates a key that may at ${siteLink("/dashboard/keys", "key_info")}.`,

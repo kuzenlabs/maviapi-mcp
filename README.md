@@ -89,7 +89,7 @@ Leave out `env` to try it with the demo key.
 | `get_key_info` | What the configured key may do: permissions, plan, remaining credits, limits. |
 | `get_changelog` | An API's versions, newest first, with what changed. `call_api` takes a `version`. |
 
-The request tools need your own API key. A key can start and manage builds unless you turned that off when you created it; publishing is a separate permission you turn on for a key on the [keys page](https://maviapi.com/dashboard/keys). Every rule (who may publish, one build per API at a time, the daily limits) is enforced by maviapi, not by this server.
+The request tools need your own API key with request permissions. A key only calls data APIs unless you turn permissions on when you create it on the [keys page](https://maviapi.com/dashboard/keys): "Start and manage builds" for asking, steering and cancelling, and "Publish builds" for `publish_request`. `create_api` works with any key. Every rule (who may publish, one build per API at a time, the daily limits) is enforced by maviapi, not by this server.
 
 A handful of generic tools keeps the agent's context small however large the catalog grows. If you rely on a few APIs, `MAVIAPI_TOOLS` also exposes each of their endpoints as its own typed tool, with a full input schema:
 

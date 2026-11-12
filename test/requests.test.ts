@@ -169,7 +169,7 @@ describe("request_endpoint", () => {
     expect(taken.text).toContain("already exists");
 
     const scope = await call("request_endpoint", args);
-    expect(scope.text).toContain("does not have the requests:write permission");
+    expect(scope.text).toContain("only calls data APIs");
     expect(scope.text).toContain("/dashboard/keys");
   });
 
@@ -237,6 +237,19 @@ describe("get_build_status with your own key", () => {
     const res = await call("get_build_status", { request_id: "req-1" });
     expect(res.isError).toBe(false);
     expect(res.text).toContain("Build req-1 for news.ycombinator.com: building.");
+  });
+
+  it("falls back for a key without request permissions too", async () => {
+    const fetch = backend({
+      "GET /v1/me/requests/req-1/status": () =>
+        Response.json({ error: "missing_scope", scope: "requests:write" }, { status: 403 }),
+      "GET /v1/requests/req-1": () =>
+        Response.json({ id: "req-1", status: "queued", domain: "example.com", slug: null, error: null, progress: [] }),
+    });
+    const call = await connect(fetch.impl);
+    const res = await call("get_build_status", { request_id: "req-1", wait_seconds: 30 });
+    expect(res.isError).toBe(false);
+    expect(res.text).toContain("Build req-1 for example.com: queued.");
   });
 
   it("says a published request is live and where", async () => {
@@ -308,7 +321,7 @@ describe("publish_request / cancel_request / send_request_message", () => {
     const call = await connect(fetch.impl);
     const scope = await call("publish_request", { request_id: "req-9" });
     expect(scope.isError).toBe(true);
-    expect(scope.text).toContain("does not have the requests:publish permission");
+    expect(scope.text).toContain("may not publish (it has no requests:publish permission)");
     expect(scope.text).toContain("/dashboard/requests");
 
     const early = await call("publish_request", { request_id: "req-9" });
