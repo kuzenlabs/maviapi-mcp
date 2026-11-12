@@ -79,7 +79,17 @@ Leave out `env` to try it with the demo key.
 | `get_api` | An API's endpoints, their parameters, and the fields each one returns. |
 | `call_api` | Call an endpoint and get live JSON back. List endpoints return 10 results unless you pass `limit`. |
 | `create_api` | No API for the site you need? Starts a build from a URL and a plain-language description, and returns a `request_id`. |
-| `get_build_status` | Follows build progress and checks public catalog visibility separately. A `published` build status means completion; the owner still reviews and publishes the draft. |
+| `get_build_status` | Where a build is: its phase, each endpoint with its test results or what went wrong, and what the build said last. `wait_seconds` returns as soon as something changes. A finished build is not public until it is published. |
+| `request_endpoint` | Add one endpoint to an API that exists, or a changed version of one (it ships beside the old one, e.g. `/search-v2`). Previews first; `confirm: true` starts the build. |
+| `list_requests` | Your API and endpoint requests, with their status. |
+| `send_request_message` | Tell a build something in plain words: add detail, fix or drop a failed endpoint, try again. |
+| `call_draft` | Call an endpoint of a draft before it is published. Costs no credits. |
+| `publish_request` | Make a finished request live. Needs a key with the `requests:publish` permission. |
+| `cancel_request` | Stop the build running for a request. |
+| `get_key_info` | What the configured key may do: permissions, plan, remaining credits, limits. |
+| `get_changelog` | An API's versions, newest first, with what changed. `call_api` takes a `version`. |
+
+The request tools need your own API key. A key can start and manage builds unless you turned that off when you created it; publishing is a separate permission you turn on for a key on the [keys page](https://maviapi.com/dashboard/keys). Every rule (who may publish, one build per API at a time, the daily limits) is enforced by maviapi, not by this server.
 
 A handful of generic tools keeps the agent's context small however large the catalog grows. If you rely on a few APIs, `MAVIAPI_TOOLS` also exposes each of their endpoints as its own typed tool, with a full input schema:
 
@@ -100,6 +110,10 @@ claude mcp add maviapi -e MAVIAPI_TOOLS=booking,airbnb,kiwi -- npx -y '@maviapi/
 `search_apis` with no query lists everything currently in the catalog. And for a site that is not there yet:
 
 - "Start an API build for news.ycombinator.com with front-page stories, points and comment counts."
+
+And for an API that exists but lacks something:
+
+- "Tripadvisor has no endpoint for a hotel's reviews. Ask for one, tell me when it is ready, and show me a sample before you publish it."
 
 Use your own account and API key when you need to review and publish a build from the [dashboard](https://maviapi.com/dashboard/requests). The shared demo key can start builds, but does not provide an owner dashboard session for them. If an API is already public, `get_api` and `call_api` use its current public build; a newly completed candidate may still await publication.
 

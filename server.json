@@ -3,7 +3,7 @@
   "name": "io.github.kuzenlabs/maviapi-mcp",
   "title": "maviapi",
   "description": "Live JSON from sites with no API (Booking, Airbnb, Tripadvisor\u2026), plus agent-built APIs for any site",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "websiteUrl": "https://maviapi.com",
   "repository": {
     "url": "https://github.com/kuzenlabs/maviapi-mcp",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@maviapi/mcp",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },
