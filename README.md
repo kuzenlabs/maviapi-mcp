@@ -86,7 +86,7 @@ Leave out `env` to try it with the demo key.
 | `call_draft` | Call an endpoint of a draft before it is published. Costs no credits. |
 | `publish_request` | Make a finished request live. Needs a key with the `requests:publish` permission. |
 | `cancel_request` | Stop the build running for a request. |
-| `report_endpoint_issue` | Report an endpoint that fails, comes back empty or repeats the same page. maviapi replays the call: a fault it reproduces is repaired in place, the rest go to a person. With no arguments it lists your reports. |
+| `report_endpoint_issue` | Report an endpoint that fails, comes back empty or repeats the same page. maviapi replays the call and checks the endpoint itself: a fault its own check confirms is repaired in place, the rest go to a person. With no arguments it lists your reports. |
 | `get_key_info` | What the configured key may do: permissions, plan, remaining credits, limits. |
 | `get_changelog` | An API's versions, newest first, with what changed. `call_api` takes a `version`. |
 

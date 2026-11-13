@@ -143,7 +143,9 @@ export const REQUEST_TOOLS: Tool[] = [
     description:
       "Tell maviapi that an endpoint that exists returns the wrong thing: it fails, comes back empty, or repeats the same page. " +
       "Use this instead of asking for a changed version when the endpoint is simply broken: the fix lands on the endpoint itself, for everyone. " +
-      "maviapi replays the call at once. If it reproduces the fault a repair starts on its own; if not, a person reads the report. " +
+      "maviapi replays the call at once and then runs its own check of the endpoint. If that check fails too the report is confirmed and the endpoint is queued for repair; " +
+      "if not (a fault only certain parameters show, a repeated page, wrong values) a person on the team reads the report. " +
+      "A report's status is confirmed, fixed or received. " +
       "Pass the `params` of a call that shows the fault. Without `endpoint` and `description` it lists the reports made with this key. " +
       "Needs an API key with the requests:write permission (any request permission to list).",
     inputSchema: {
@@ -486,7 +488,7 @@ export class RequestTools {
         ...(typeof body.found === "string" ? [`What maviapi saw: ${body.found}`] : []),
         "",
         body.status === "confirmed"
-          ? "Nothing more to do: the endpoint keeps its path, so the same call works once the repair is live. " +
+          ? "Nothing more to do: the endpoint keeps its path, so the same call works once it is repaired. " +
             "get_api shows the endpoint's health; report_endpoint_issue with no arguments shows where this report stands."
           : "If the fault only shows with certain parameters, they are in the report for the person who reads it. " +
             "If you need different behavior rather than a fix, request_endpoint with `change` builds a new version beside this one.",
