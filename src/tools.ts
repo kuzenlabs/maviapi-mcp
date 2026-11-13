@@ -14,6 +14,10 @@ import {
   type Endpoint,
 } from "./catalog.js";
 import { MaviapiError, type CallResult, type MaviapiClient } from "./client.js";
+import { MAX_WAIT_SECONDS, REQUEST_TOOLS, RequestTools } from "./requests.js";
+import { MAX_RESULT_CHARS, UserError, failure, humanDuration, objectArg, stringArg, text } from "./result.js";
+
+export { humanDuration };
 import {
   PLAYGROUND_DAILY_LIMIT,
   PLAYGROUND_FREE_BUILDS,
@@ -21,9 +25,6 @@ import {
   siteLink,
   type Config,
 } from "./config.js";
-
-/** Cap on one tool result, so a large listing cannot swallow the agent's context. */
-const MAX_RESULT_CHARS = 50_000;
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true } as const;
 
@@ -47,8 +48,10 @@ const GENERIC_TOOLS: Tool[] = [
     name: "get_api",
     title: "Show a maviapi API",
     description:
-      "Show one maviapi API's endpoints: what each returns, its parameters (required ones marked), and the fields in the response. " +
-      "Accepts the API slug from search_apis, or the site's domain (e.g. \"airbnb.com\"). Read this before call_api.",
+      "Show one maviapi API's endpoints: what each returns, its parameters (required ones marked), the fields in the response, " +
+      "and whether each endpoint is working right now. Also lists endpoints that are being built. " +
+      "Accepts the API slug from search_apis, or the site's domain (e.g. \"airbnb.com\"). Read this before call_api. " +
+      "If the API lacks what you need, request_endpoint adds an endpoint to it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -74,6 +77,10 @@ const GENERIC_TOOLS: Tool[] = [
           type: "object",
           description: "Endpoint parameters, as listed by get_api.",
           additionalProperties: true,
+        },
+        version: {
+          type: "integer",
+          description: "Call this version of the API instead of the live one (see get_changelog). Rarely needed.",
         },
       },
       required: ["api", "endpoint"],
@@ -111,14 +118,18 @@ const GENERIC_TOOLS: Tool[] = [
     name: "get_build_status",
     title: "Check a maviapi build",
     description:
-      "Progress of a build started with create_api: queued, building, deploying, published, or failed. " +
-      "The build status published means the build completed, not that the API is publicly available. " +
-      "Checks catalog visibility separately; the owner reviews and publishes drafts in the dashboard. " +
-      "Check back every few minutes rather than in a tight loop.",
+      "Where a build started with create_api or request_endpoint is: its phase, each endpoint with its test results or what went wrong, " +
+      "and what the build said last. A finished build is not public until it is published (publish_request, or the owner in the dashboard). " +
+      `Pass \`wait_seconds\` (up to ${MAX_WAIT_SECONDS}) and the call returns as soon as something changes, so you can follow a build ` +
+      "without sleeping. With the shared demo key it reports the plain build status only.",
     inputSchema: {
       type: "object",
       properties: {
-        request_id: { type: "string", description: "The request_id create_api returned." },
+        request_id: { type: "string", description: "The request_id create_api or request_endpoint returned." },
+        wait_seconds: {
+          type: "integer",
+          description: `Hold the call up to this many seconds (max ${MAX_WAIT_SECONDS}) until the build's state changes.`,
+        },
       },
       required: ["request_id"],
     },
@@ -137,58 +148,6 @@ interface BuildPayload {
   progress?: Array<{ state: string; message: string; at: string }>;
 }
 
-/** "45 seconds", "30 minutes", "29 days": the largest unit that fits. */
-export function humanDuration(seconds: number): string {
-  const units: Array<[string, number]> = [["day", 86_400], ["hour", 3_600], ["minute", 60]];
-  for (const [unit, size] of units) {
-    if (seconds >= size) {
-      const n = Math.round(seconds / size);
-      return `${n} ${unit}${n === 1 ? "" : "s"}`;
-    }
-  }
-  return `${seconds} second${seconds === 1 ? "" : "s"}`;
-}
-
-/** A failure worth showing the agent verbatim: bad input, unknown names. */
-class UserError extends Error {}
-
-function text(body: string): CallToolResult {
-  return { content: [{ type: "text", text: body }] };
-}
-
-function failure(body: string): CallToolResult {
-  return { content: [{ type: "text", text: body }], isError: true };
-}
-
-function stringArg(args: Record<string, unknown>, name: string, required: true): string;
-function stringArg(args: Record<string, unknown>, name: string, required?: false): string | undefined;
-function stringArg(args: Record<string, unknown>, name: string, required = false): string | undefined {
-  const value = args[name];
-  if (typeof value === "string" && value.trim()) return value.trim();
-  if (value === undefined || value === null || value === "") {
-    if (required) throw new UserError(`\`${name}\` is required.`);
-    return undefined;
-  }
-  throw new UserError(`\`${name}\` must be a string.`);
-}
-
-/** Models sometimes send `params` as a JSON string; accept that too. */
-function objectArg(args: Record<string, unknown>, name: string): Record<string, unknown> {
-  let value = args[name];
-  if (value === undefined || value === null || value === "") return {};
-  if (typeof value === "string") {
-    try {
-      value = JSON.parse(value);
-    } catch {
-      throw new UserError(`\`${name}\` must be an object, e.g. {"q": "istanbul"}.`);
-    }
-  }
-  if (typeof value !== "object" || Array.isArray(value)) {
-    throw new UserError(`\`${name}\` must be an object, e.g. {"q": "istanbul"}.`);
-  }
-  return value as Record<string, unknown>;
-}
-
 interface DedicatedTool {
   tool: Tool;
   slug: string;
@@ -198,16 +157,22 @@ interface DedicatedTool {
 export class Toolset {
   private dedicated: Promise<Map<string, DedicatedTool>> | null = null;
   private nudged = false;
+  private readonly requests: RequestTools;
 
   constructor(
     private readonly client: MaviapiClient,
     private readonly config: Config = client.config,
     private readonly log: (message: string) => void = (m) => console.error(m),
-  ) {}
+  ) {
+    this.requests = new RequestTools(client, config, {
+      resolveApi: (ref) => this.resolveApi(ref),
+      describeFailure: (result) => this.describeFailure(result),
+    });
+  }
 
   async list(): Promise<Tool[]> {
     const dedicated = await this.dedicatedTools();
-    return [...GENERIC_TOOLS, ...[...dedicated.values()].map((d) => d.tool)];
+    return [...GENERIC_TOOLS, ...REQUEST_TOOLS, ...[...dedicated.values()].map((d) => d.tool)];
   }
 
   async call(name: string, args: Record<string, unknown> = {}): Promise<CallToolResult> {
@@ -224,6 +189,7 @@ export class Toolset {
         case "get_build_status":
           return await this.getBuildStatus(args);
       }
+      if (this.requests.handles(name)) return await this.requests.call(name, args);
       const dedicated = (await this.dedicatedTools()).get(name);
       if (!dedicated) throw new UserError(`Unknown tool "${name}".`);
       return await this.run(dedicated.slug, dedicated.endpoint, args);
@@ -273,12 +239,27 @@ export class Toolset {
 
   private async getApi(args: Record<string, unknown>): Promise<CallToolResult> {
     const api = await this.resolveApi(stringArg(args, "api", true));
-    const endpoints = await this.client.listEndpoints(api.slug);
+    // Health and what is being built are extras: the listing stands without them.
+    const [endpoints, health, building] = await Promise.all([
+      this.client.listEndpoints(api.slug),
+      this.client.apiHealth(api.slug).catch(() => null),
+      this.client.buildingEndpoints(api.slug).catch(() => null),
+    ]);
+    const statusOf = new Map<string, string>();
+    const healthBody = health?.ok ? (health.body as { status?: string; endpoints?: Array<{ path: string; status: string }> }) : null;
+    for (const e of healthBody?.endpoints ?? []) statusOf.set(e.path.toLowerCase(), e.status);
+
     const out = [`# ${api.name} (${api.slug})`];
     if (api.target_url) out.push(`Site: ${api.target_url}`);
     if (api.description) out.push(api.description.trim());
+    if (healthBody?.status && healthBody.status !== "unknown") out.push(`Health: ${healthBody.status}`);
     for (const ep of endpoints) {
       out.push("", `## ${ep.name}: ${ep.method} ${ep.path}`);
+      const status = statusOf.get(ep.path.toLowerCase());
+      // Only a problem is worth a line: most endpoints are fine.
+      if (status && status !== "operational" && status !== "unknown") {
+        out.push(`Status: ${status} right now. Calls may fail; maviapi repairs endpoints when a site changes.`);
+      }
       if (ep.description) out.push(ep.description);
       const params = describeParams(ep.inputSchema);
       out.push(params.length ? "Parameters:" : "Parameters: none");
@@ -286,10 +267,17 @@ export class Toolset {
       const fields = outlineOutput(ep.outputSchema, 25);
       if (fields.length) out.push("Returns:", ...fields.map((f) => `  ${f}`));
     }
+    const beingBuilt = building?.ok
+      ? ((building.body as { building?: Array<{ path: string }> }).building ?? []).map((b) => `GET ${b.path}`)
+      : [];
+    if (beingBuilt.length) {
+      out.push("", `Being built right now: ${beingBuilt.join(", ")}. It appears here once it is published.`);
+    }
     const first = endpoints[0];
     if (first) {
       out.push("", `Call one with call_api, e.g. {"api": "${api.slug}", "endpoint": "${first.name}", "params": {…}}.`);
     }
+    out.push("Missing something? request_endpoint adds an endpoint to this API.");
     return text(truncate(out.join("\n"), MAX_RESULT_CHARS, "too many endpoints to show"));
   }
 
@@ -305,11 +293,20 @@ export class Toolset {
           `get_api "${api.slug}" lists their parameters.`,
       );
     }
-    return this.run(api.slug, endpoint, params);
+    const version = args.version === undefined || args.version === null ? undefined : Number(args.version);
+    if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
+      throw new UserError("`version` must be a version number from get_changelog, e.g. 3.");
+    }
+    return this.run(api.slug, endpoint, params, version);
   }
 
   /** Call an endpoint and turn the outcome into something an agent can act on. */
-  private async run(slug: string, endpoint: Endpoint, input: Record<string, unknown>): Promise<CallToolResult> {
+  private async run(
+    slug: string,
+    endpoint: Endpoint,
+    input: Record<string, unknown>,
+    version?: number,
+  ): Promise<CallToolResult> {
     const params = { ...input };
     if ("limit" in endpoint.inputSchema.properties && params.limit === undefined) {
       params.limit = DEFAULT_LIMIT;
@@ -319,7 +316,7 @@ export class Toolset {
     );
     if (missing.length) throw new MissingParamsError(missing);
 
-    const result = await this.client.call(slug, endpoint, params);
+    const result = await this.client.call(slug, endpoint, params, version);
     if (!result.ok) return failure(this.describeFailure(result));
 
     const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body);
@@ -420,6 +417,18 @@ export class Toolset {
 
   private async getBuildStatus(args: Record<string, unknown>): Promise<CallToolResult> {
     const id = stringArg(args, "request_id", true);
+    // With the user's own key the request routes answer in full: endpoints,
+    // test results, what the build said, and a wait until something changes.
+    if (this.requests.available) {
+      const wait = Math.min(Math.max(Math.trunc(Number(args.wait_seconds)) || 0, 0), MAX_WAIT_SECONDS);
+      const rich = await this.requests.status(id, wait);
+      if (rich.status) {
+        if (rich.status.phase === "published" && rich.status.slug) this.client.invalidateApi(rich.status.slug);
+        return text(this.requests.describeStatus(rich.status));
+      }
+      if (rich.result.status === 429) return failure(this.describeFailure(rich.result));
+      // Anything else (an older deployment, a route closed to keys): the plain status below.
+    }
     const result = await this.client.getBuild(id);
     if (result.status === 404) {
       return failure(`No build "${id}" was started with this API key. Use the request_id create_api returned.`);

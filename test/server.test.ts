@@ -21,11 +21,24 @@ async function connect(env: Record<string, string> = {}, fetchImpl = fakeFetch()
   };
 }
 
+const GENERIC = ["search_apis", "get_api", "call_api", "create_api", "get_build_status"];
+const REQUEST = [
+  "request_endpoint",
+  "list_requests",
+  "send_request_message",
+  "call_draft",
+  "publish_request",
+  "cancel_request",
+  "report_endpoint_issue",
+  "get_key_info",
+  "get_changelog",
+];
+
 describe("tool list", () => {
-  it("serves the four generic tools and the workflow instructions", async () => {
+  it("serves the generic and request tools and the workflow instructions", async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(["search_apis", "get_api", "call_api", "create_api", "get_build_status"]);
+    expect(tools.map((t) => t.name)).toEqual([...GENERIC, ...REQUEST]);
     expect(client.getInstructions()).toContain("search_apis");
   });
 
@@ -33,15 +46,7 @@ describe("tool list", () => {
     const { client } = await connect({ MAVIAPI_TOOLS: "booking, nosuchapi" });
     const { tools } = await client.listTools();
     const hotel = tools.find((t) => t.name === "booking_hotel");
-    expect(tools.map((t) => t.name)).toEqual([
-      "search_apis",
-      "get_api",
-      "call_api",
-      "create_api",
-      "get_build_status",
-      "booking_search",
-      "booking_hotel",
-    ]);
+    expect(tools.map((t) => t.name)).toEqual([...GENERIC, ...REQUEST, "booking_search", "booking_hotel"]);
     expect(hotel?.inputSchema.required).toEqual(["country", "slug"]);
     expect(tools.find((t) => t.name === "booking_search")?.description).toContain("Returns 10 results");
   });

@@ -81,15 +81,103 @@ export class MaviapiClient {
     return this.send("GET", `/v1/requests/${encodeURIComponent(id)}`);
   }
 
-  /** Call one endpoint through the maviapi gateway. */
-  async call(slug: string, endpoint: Endpoint, params: Record<string, unknown>): Promise<CallResult> {
+  /** Call one endpoint through the maviapi gateway, on the live build or on `version`. */
+  async call(
+    slug: string,
+    endpoint: Endpoint,
+    params: Record<string, unknown>,
+    version?: number,
+  ): Promise<CallResult> {
     const { path, query } = fillPath(endpoint.path, params);
-    return this.send(endpoint.method, `/v1/sites/${encodeURIComponent(slug)}${path}${buildQuery(query)}`);
+    return this.send(
+      endpoint.method,
+      `/v1/sites/${encodeURIComponent(slug)}${path}${buildQuery(query)}`,
+      undefined,
+      version === undefined ? {} : { "x-maviapi-version": String(version) },
+    );
+  }
+
+  /** Drop what is cached about one API, after a request changed it. */
+  invalidateApi(slug: string): void {
+    this.endpoints.delete(slug);
+    this.catalog = null;
+  }
+
+  /** Each endpoint's current health (GET /v1/apis/:slug/health). */
+  apiHealth(slug: string): Promise<CallResult> {
+    return this.send("GET", `/v1/apis/${encodeURIComponent(slug)}/health`);
+  }
+
+  /** The endpoints being built for an API right now (GET /v1/apis/:slug/endpoint-requests). */
+  buildingEndpoints(slug: string): Promise<CallResult> {
+    return this.send("GET", `/v1/apis/${encodeURIComponent(slug)}/endpoint-requests`);
+  }
+
+  /** Every build of an API, newest first, with what changed (GET /v1/apis/:slug/changelog). */
+  changelog(slug: string): Promise<CallResult> {
+    return this.send("GET", `/v1/apis/${encodeURIComponent(slug)}/changelog`);
+  }
+
+  /** Ask for one endpoint on a public API, or dry-run the ask (POST /v1/me/apis/:slug/endpoint-requests). */
+  askEndpoint(slug: string, ask: Record<string, unknown>): Promise<CallResult> {
+    return this.send("POST", `/v1/me/apis/${encodeURIComponent(slug)}/endpoint-requests`, ask);
+  }
+
+  /** Report an endpoint that answers wrongly (POST /v1/me/apis/:slug/endpoint-reports). */
+  reportEndpoint(slug: string, report: Record<string, unknown>): Promise<CallResult> {
+    return this.send("POST", `/v1/me/apis/${encodeURIComponent(slug)}/endpoint-reports`, report);
+  }
+
+  /** The key owner's reports and where each stands (GET /v1/me/endpoint-reports). */
+  listReports(): Promise<CallResult> {
+    return this.send("GET", "/v1/me/endpoint-reports");
+  }
+
+  /** The key owner's requests (GET /v1/me/requests). */
+  listRequests(filter: { slug?: string; status?: string }): Promise<CallResult> {
+    return this.send("GET", `/v1/me/requests${buildQuery(filter)}`);
+  }
+
+  /** Where a request is; `wait` holds the call until `state` no longer matches (GET /v1/me/requests/:id/status). */
+  requestStatus(id: string, wait = 0, state?: string): Promise<CallResult> {
+    const query = buildQuery({ ...(wait > 0 && { wait }), ...(wait > 0 && state && { state }) });
+    return this.send("GET", `/v1/me/requests/${encodeURIComponent(id)}/status${query}`);
+  }
+
+  /** Say something to the build of a request (POST /v1/me/requests/:id/messages). */
+  sendRequestMessage(id: string, text: string): Promise<CallResult> {
+    return this.send("POST", `/v1/me/requests/${encodeURIComponent(id)}/messages`, { text });
+  }
+
+  /** Release every endpoint of a request that passed (POST /v1/me/requests/:id/publish). */
+  publishRequest(id: string): Promise<CallResult> {
+    return this.send("POST", `/v1/me/requests/${encodeURIComponent(id)}/publish`, {});
+  }
+
+  /** Stop the build running for a request (POST /v1/me/requests/:id/cancel). */
+  cancelRequest(id: string): Promise<CallResult> {
+    return this.send("POST", `/v1/me/requests/${encodeURIComponent(id)}/cancel`, {});
+  }
+
+  /** Call an endpoint of a draft before it is published (GET /v1/drafts/:draftId/<path>). */
+  callDraft(draftId: string, path: string, params: Record<string, unknown>): Promise<CallResult> {
+    const filled = fillPath(path, params);
+    return this.send("GET", `/v1/drafts/${encodeURIComponent(draftId)}${filled.path}${buildQuery(filled.query)}`);
+  }
+
+  /** What this key is and may do (GET /v1/me/key). */
+  keyInfo(): Promise<CallResult> {
+    return this.send("GET", "/v1/me/key");
   }
 
   /** An authenticated request; the outcome is returned, never thrown, so callers can explain it. */
-  private async send(method: string, path: string, json?: unknown): Promise<CallResult> {
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.config.apiKey}` };
+  private async send(
+    method: string,
+    path: string,
+    json?: unknown,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<CallResult> {
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.config.apiKey}`, ...extraHeaders };
     if (json !== undefined) headers["Content-Type"] = "application/json";
     const res = await this.request(`${this.config.baseUrl}${path}`, CALL_TIMEOUT_MS, {
       method,

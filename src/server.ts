@@ -6,7 +6,10 @@ import { Toolset } from "./tools.js";
 
 const INSTRUCTIONS = `maviapi gives you live, structured JSON from websites that have no official API (travel, e-commerce, news, events, finance and more).
 Workflow: search_apis to find an API for a site or topic, get_api to read its endpoints and parameters, then call_api to fetch data.
-If no API covers the site you need, create_api builds one (about half an hour; follow it with get_build_status).`;
+If no API covers the site you need, create_api builds one (about half an hour; follow it with get_build_status).
+If an API exists but lacks an endpoint, or you need one to behave differently, request_endpoint adds one: preview it, let the user agree, start it with confirm: true, follow it with get_build_status (wait_seconds), try it with call_draft, and publish_request when the user wants it live.
+If an endpoint is simply broken (it fails, comes back empty, or repeats the same page), report_endpoint_issue with the params of the failing call: maviapi replays it and checks the endpoint itself. A fault its own check confirms is repaired in place; the rest are read by a person.
+Starting a build and publishing change things for the user: do them when the user asked, not on your own.`;
 
 /**
  * The tool list is computed at request time (MAVIAPI_TOOLS adds one typed tool
