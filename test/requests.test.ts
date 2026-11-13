@@ -213,6 +213,27 @@ describe("request_endpoint", () => {
     expect(scope.text).toContain("/dashboard/keys");
   });
 
+  it("says when to try again on a spent limit, once", async () => {
+    const fetch = backend({
+      [ASK]: () =>
+        Response.json(
+          { error: "extension_rate_limited", message: "You have asked for as many endpoints as one account can start for now. Try again later." },
+          { status: 429, headers: { "retry-after": "600" } },
+        ),
+    });
+    const call = await connect(fetch.impl);
+    const res = await call("request_endpoint", {
+      api: "booking",
+      path: "/reviews",
+      description: "The reviews of one hotel.",
+      confirm: true,
+    });
+    expect(res.isError).toBe(true);
+    expect(res.text).toBe(
+      "You have asked for as many endpoints as one account can start for now. Try again in 10 minutes.",
+    );
+  });
+
   it("needs a path or a change, and a real endpoint to change", async () => {
     const call = await connect(backend({}).impl);
     const neither = await call("request_endpoint", { api: "booking", description: "Reviews." });
@@ -573,13 +594,14 @@ describe("report_endpoint_issue", () => {
     expect(fetch.calls.some((c) => c.method === "POST")).toBe(false);
   });
 
-  it("explains a repeat and a missing permission", async () => {
+  it("explains a repeat, a missing permission and a report of an API it never called", async () => {
     const answers: Response[] = [
       Response.json(
         { error: "already_reported", message: "You reported this endpoint in the last day. That report still stands.", reportId: "er_1" },
         { status: 409 },
       ),
       Response.json({ error: "missing_scope", scope: "requests:write", message: "no" }, { status: 403 }),
+      Response.json({ error: "not_a_caller", message: "Reports come from callers." }, { status: 403 }),
     ];
     const fetch = backend({ [REPORT]: () => answers.shift()! });
     const call = await connect(fetch.impl);
@@ -593,6 +615,10 @@ describe("report_endpoint_issue", () => {
     const denied = await call("report_endpoint_issue", args);
     expect(denied.isError).toBe(true);
     expect(denied.text).toContain("requests:write");
+
+    const stranger = await call("report_endpoint_issue", args);
+    expect(stranger.isError).toBe(true);
+    expect(stranger.text).toContain('call_api {"api": "booking"');
   });
 
   it("lists the reports made with the key when called with no arguments", async () => {

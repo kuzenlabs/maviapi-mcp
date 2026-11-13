@@ -146,7 +146,8 @@ export const REQUEST_TOOLS: Tool[] = [
       "maviapi replays the call at once and then runs its own check of the endpoint. If that check fails too the report is confirmed and the endpoint is queued for repair; " +
       "if not (a fault only certain parameters show, a repeated page, wrong values) a person on the team reads the report. " +
       "A report's status is confirmed, fixed or received. " +
-      "Pass the `params` of a call that shows the fault. Without `endpoint` and `description` it lists the reports made with this key. " +
+      "Report what you saw: maviapi takes a report of an API only from an account that has called it with its own key, so make the failing call with call_api first, then pass its `params` here. " +
+      "Without `endpoint` and `description` it lists the reports made with this key. " +
       "Needs an API key with the requests:write permission (any request permission to list).",
     inputSchema: {
       type: "object",
@@ -356,8 +357,10 @@ export class RequestTools {
       return "This maviapi deployment does not open that route to API keys.";
     }
     if (result.status === 429 && body.error !== "rate_limited") {
-      const wait = result.retryAfter ? ` Try again in ${humanDuration(result.retryAfter)}.` : "";
-      return `${message || "This account has started as many builds as it may for now."}${wait}`;
+      const said = message || "This account has started as many builds as it may for now.";
+      if (!result.retryAfter) return said;
+      // The backend ends its sentence with "Try again later.": say when instead.
+      return `${said.replace(/\s*Try again later\.?\s*$/i, "")} Try again in ${humanDuration(result.retryAfter)}.`;
     }
     if ((result.status === 400 || result.status === 409 || result.status === 422) && message) return message;
     return this.deps.describeFailure(result);
@@ -478,6 +481,12 @@ export class RequestTools {
         return failure(
           `${String(body.message ?? "You already reported this endpoint today.")} ` +
             "Call report_endpoint_issue with no arguments to see where that report stands.",
+        );
+      }
+      if (result.status === 403 && body.error === "not_a_caller") {
+        return failure(
+          `maviapi takes a report of ${api.slug} only from an account that has called it with its own key. ` +
+            `Make the call that shows the fault with call_api {"api": "${api.slug}", ...} first, then report it again with the same params.`,
         );
       }
       return failure(this.refusal(result));
