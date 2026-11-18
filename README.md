@@ -16,6 +16,18 @@ Agents are bad at the web. Browsing is slow, burns tokens on raw HTML, and stall
 
 ## Install
 
+### Hosted: paste a URL, sign in
+
+The same tools are hosted at **`https://mcp.maviapi.com/mcp`**, so nothing needs installing. In Claude or ChatGPT, add it as a custom connector and sign in to maviapi; calls use your plan's credits and the connection shows up on your [keys page](https://maviapi.com/dashboard/keys). Coding tools take the URL too:
+
+```bash
+claude mcp add --transport http maviapi https://mcp.maviapi.com/mcp
+```
+
+To try it without an account, connect to `https://mcp.maviapi.com/demo` (search and call on the shared demo key, no builds). More clients: [maviapi.com/docs#mcp](https://maviapi.com/docs#mcp).
+
+The rest of this section runs the server locally from npm.
+
 ### Claude Code
 
 Install it as a plugin from this repo's marketplace:
