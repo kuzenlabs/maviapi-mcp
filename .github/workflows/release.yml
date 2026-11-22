@@ -28,11 +28,12 @@ jobs:
       # Trusted Publishing needs npm 11.5.1 or newer.
       - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
-      - name: Check the tag matches package.json and server.json
+      - name: Check the tag matches package.json, server.json and gemini-extension.json
         run: |
           v="${GITHUB_REF_NAME#v}"
           test "$(node -p 'require("./package.json").version')" = "$v"
           test "$(node -p 'require("./server.json").version')" = "$v"
+          test "$(node -p 'require("./gemini-extension.json").version')" = "$v"
       - run: pnpm typecheck && pnpm test && pnpm build
       - name: Publish to npm
         run: |

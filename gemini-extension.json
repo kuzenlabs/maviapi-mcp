@@ -1,0 +1,10 @@
+{
+  "name": "maviapi",
+  "version": "0.2.1",
+  "description": "Live JSON from websites with no API (Booking.com, Airbnb, Tripadvisor, Kiwi.com and more), plus agent-built APIs for any site.",
+  "mcpServers": {
+    "maviapi": {
+      "httpUrl": "https://mcp.maviapi.com/mcp"
+    }
+  }
+}

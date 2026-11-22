@@ -28,6 +28,14 @@ To try it without an account, connect to `https://mcp.maviapi.com/demo` (search 
 
 The rest of this section runs the server locally from npm.
 
+### Gemini CLI
+
+```bash
+gemini extensions install https://github.com/kuzenlabs/maviapi-mcp
+```
+
+The extension connects to the hosted server and signs you in to maviapi the first time a tool runs.
+
 ### Claude Code
 
 Install it as a plugin from this repo's marketplace:
