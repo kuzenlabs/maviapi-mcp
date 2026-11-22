@@ -40,6 +40,7 @@ describe("tool list", () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual([...GENERIC, ...REQUEST]);
     expect(client.getInstructions()).toContain("search_apis");
+    for (const tool of tools) expect(tool.annotations?.title).toBe(tool.title);
   });
 
   it("adds typed per-endpoint tools for MAVIAPI_TOOLS", async () => {
