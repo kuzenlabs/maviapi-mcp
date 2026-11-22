@@ -11,6 +11,18 @@ If an API exists but lacks an endpoint, or you need one to behave differently, r
 If an endpoint is simply broken (it fails, comes back empty, or repeats the same page), report_endpoint_issue with the params of the failing call: maviapi replays it and checks the endpoint itself. A fault its own check confirms is repaired in place; the rest are read by a person.
 Starting a build and publishing change things for the user: do them when the user asked, not on your own.`;
 
+type ListedTool = { title?: string; annotations?: Record<string, unknown> };
+
+/**
+ * App directories (Claude's among them) read a tool's display name from
+ * annotations.title, so each tool carries its title there too.
+ */
+export function withAnnotationTitles<T extends ListedTool>(tools: T[]): T[] {
+  return tools.map((tool) =>
+    tool.title && !tool.annotations?.title ? { ...tool, annotations: { title: tool.title, ...tool.annotations } } : tool,
+  );
+}
+
 /**
  * The tool list is computed at request time (MAVIAPI_TOOLS adds one typed tool
  * per endpoint, read from the live catalog), so the handlers are registered on
@@ -23,7 +35,7 @@ export function createServer(config: Config, fetchImpl?: typeof fetch): McpServe
     { name: "maviapi", title: "maviapi", version: VERSION, websiteUrl: "https://maviapi.com" },
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
   );
-  mcp.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await toolset.list() }));
+  mcp.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: withAnnotationTitles(await toolset.list()) }));
   mcp.server.setRequestHandler(CallToolRequestSchema, (request) =>
     toolset.call(request.params.name, request.params.arguments ?? {}),
   );
