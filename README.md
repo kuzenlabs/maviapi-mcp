@@ -1,5 +1,7 @@
 # maviapi MCP server
 
+[![npm](https://img.shields.io/npm/v/@maviapi/mcp)](https://www.npmjs.com/package/@maviapi/mcp) [![kuzenlabs/maviapi-mcp MCP server](https://glama.ai/mcp/servers/kuzenlabs/maviapi-mcp/badges/score.svg)](https://glama.ai/mcp/servers/kuzenlabs/maviapi-mcp)
+
 Give Claude, Cursor, or any MCP client **live, structured JSON from websites that have no API**: Booking.com, Airbnb, Tripadvisor, Kiwi.com, Trainline, Hepsiburada, Yemeksepeti and more, plus any site you ask for.
 
 ```
