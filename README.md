@@ -99,7 +99,7 @@ Leave out `env` to try it with the demo key.
 |------|--------------|
 | `search_apis` | Find an API for a website or topic ("flights", "turkish news", "booking.com"). Empty query lists the whole catalog. |
 | `get_api` | An API's endpoints, their parameters, and the fields each one returns. |
-| `call_api` | Call an endpoint and get live JSON back. List endpoints return 10 results unless you pass `limit`. |
+| `call_api` | Call an endpoint and get live JSON back. List endpoints return 10 results unless you pass `limit`. An answer over 50,000 characters is cut to whole rows and flagged `truncated` (rows returned, rows asked); the HTTP API itself never cuts. |
 | `create_api` | No API for the site you need? Starts a build from a URL and a plain-language description, and returns a `request_id`. |
 | `get_build_status` | Where a build is: its phase, each endpoint with its test results or what went wrong, and what the build said last. `wait_seconds` returns as soon as something changes. A finished build is not public until it is published. |
 | `request_endpoint` | Add one endpoint to an API that exists, or a changed version of one (it ships beside the old one, e.g. `/search-v2`). Previews first; `confirm: true` starts the build. |
@@ -109,8 +109,8 @@ Leave out `env` to try it with the demo key.
 | `publish_request` | Make a finished request live. Needs a key with the `requests:publish` permission. |
 | `cancel_request` | Stop the build running for a request. |
 | `report_endpoint_issue` | Report an endpoint that fails, comes back empty or repeats the same page. maviapi replays the call and checks the endpoint itself: a fault its own check confirms is repaired in place, the rest go to a person. You can report an API you have called with your own key. With no arguments it lists your reports. |
-| `get_key_info` | What the configured key may do: permissions, plan, remaining credits, limits. |
-| `get_changelog` | An API's versions, newest first, with what changed. `call_api` takes a `version`. |
+| `get_key_info` | What the configured key may do: permissions, plan, remaining credits, limits. Works with any key of your own, with or without permissions. |
+| `get_changelog` | What changed in an API, newest first: the date of each change, which one is live, and what it changed. |
 
 The request tools need your own API key with request permissions. A key only calls data APIs unless you turn permissions on when you create it on the [keys page](https://maviapi.com/dashboard/keys): "Start and manage builds" for asking, steering, cancelling and reporting, and "Publish builds" for `publish_request`. `create_api` works with any key. Every rule (who may publish, one build per API at a time with up to 3 requests in line, the daily limits) is enforced by maviapi, not by this server.
 
