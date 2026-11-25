@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.kuzenlabs/maviapi-mcp",
   "title": "maviapi",
-  "description": "Live JSON from sites with no API (Booking, Airbnb, Tripadvisor\u2026), plus agent-built APIs for any site",
-  "version": "0.2.2",
+  "description": "The unofficial API for any website: hosted JSON APIs for sites with no official API, as MCP tools.",
+  "version": "0.2.3",
   "websiteUrl": "https://maviapi.com",
   "repository": {
     "url": "https://github.com/kuzenlabs/maviapi-mcp",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@maviapi/mcp",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "transport": {
         "type": "stdio"
       },
