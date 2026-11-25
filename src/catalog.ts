@@ -267,7 +267,7 @@ export function findEndpoint(endpoints: Endpoint[], ref: string): Endpoint | und
 
 /** Query words that say nothing about which API is meant. */
 const STOP_WORDS = new Set([
-  "a", "an", "the", "of", "in", "on", "at", "for", "to", "from", "by", "with", "and", "or",
+  "a", "an", "the", "of", "in", "on", "at", "for", "to", "from", "by", "with", "and", "or", "near",
   "api", "apis", "data", "site", "website", "com", "www",
 ]);
 
@@ -282,39 +282,48 @@ function words(text: string): string[] {
   return text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(singular);
 }
 
+/** The query words that count: stopwords and one-letter words dropped (unless nothing else is left). */
+function queryTokens(q: string): string[] {
+  const all = words(q).filter((t) => t.length > 1);
+  const meaningful = all.filter((t) => !STOP_WORDS.has(t));
+  return meaningful.length ? meaningful : all;
+}
+
+/** How strongly one query word matches an API: 0 when it does not. */
+function tokenHit(api: ApiSummary, token: string): number {
+  const slug = api.slug.toLowerCase();
+  const host = hostOf(api.target_url) ?? "";
+  let hit = 0;
+  if (slug === token) hit += 10;
+  else if (words(slug).includes(token) || (token.length >= 4 && slug.includes(token))) hit += 5;
+  if (words(host).includes(token) || (token.length >= 4 && host.includes(token))) hit += 5;
+  if (words(api.name).includes(token)) hit += 4;
+  if (words(api.description ?? "").includes(token)) hit += 1;
+  return hit;
+}
+
 /**
  * Rank catalog APIs against a free-text query. An empty query lists them all.
  *
  * Query words match whole words (not parts of words, so "out" does not match
  * "without"), and an API is kept only when every query word matches it
  * somewhere, or one matches its slug, name or site. A query no API answers
- * returns nothing, rather than every API that shares a word with it.
+ * returns nothing, rather than every API that shares a word with it; see
+ * partialMatches for the closest APIs then.
  * `loose` keeps any API that matches one word: for "did you mean" hints.
  */
 export function searchApis(apis: ApiSummary[], query: string | undefined, opts: { loose?: boolean } = {}): ApiSummary[] {
   const q = (query ?? "").trim().toLowerCase();
   if (!q) return [...apis];
   const queryHost = hostOf(q);
-  const all = words(q).filter((t) => t.length > 1);
-  const meaningful = all.filter((t) => !STOP_WORDS.has(t));
-  const tokens = meaningful.length ? meaningful : all;
+  const tokens = queryTokens(q);
 
   const scored = apis.map((api) => {
-    const slug = api.slug.toLowerCase();
-    const slugWords = new Set(words(slug));
     const host = hostOf(api.target_url) ?? "";
-    const hostWords = new Set(words(host));
-    const nameWords = new Set(words(api.name));
-    const descriptionWords = new Set(words(api.description ?? ""));
     let score = queryHost && queryHost === host ? 20 : 0;
     let matched = 0;
     for (const token of tokens) {
-      let hit = 0;
-      if (slug === token) hit += 10;
-      else if (slugWords.has(token) || (token.length >= 4 && slug.includes(token))) hit += 5;
-      if (hostWords.has(token) || (token.length >= 4 && host.includes(token))) hit += 5;
-      if (nameWords.has(token)) hit += 4;
-      if (descriptionWords.has(token)) hit += 1;
+      const hit = tokenHit(api, token);
       if (hit) matched++;
       score += hit;
     }
@@ -327,6 +336,41 @@ export function searchApis(apis: ApiSummary[], query: string | undefined, opts: 
     .filter((s) => s.score > 0)
     .sort((a, b) => b.matched - a.matched || b.score - a.score)
     .map((s) => s.api);
+}
+
+/** An API that answers some, not all, of a query's words. */
+export interface PartialMatch {
+  api: ApiSummary;
+  matched: string[];
+  missed: string[];
+}
+
+/** Most partial matches an answer lists. */
+export const MAX_PARTIAL = 5;
+
+/**
+ * The APIs that match at least one query word (after stopwords) as a whole
+ * word in name, slug, site or description, best first, at most MAX_PARTIAL.
+ * For when no API matches every word: "events istanbul" has no API about both,
+ * but event APIs exist and take the city as a parameter.
+ */
+export function partialMatches(apis: ApiSummary[], query: string | undefined): { words: string[]; hits: PartialMatch[] } {
+  const tokens = queryTokens((query ?? "").trim().toLowerCase());
+  const hits = apis
+    .map((api) => {
+      const scores = tokens.map((token) => tokenHit(api, token));
+      return {
+        api,
+        score: scores.reduce((a, b) => a + b, 0),
+        matched: tokens.filter((_, i) => scores[i]),
+        missed: tokens.filter((_, i) => !scores[i]),
+      };
+    })
+    .filter((s) => s.matched.length > 0)
+    .sort((a, b) => b.matched.length - a.matched.length || b.score - a.score)
+    .slice(0, MAX_PARTIAL)
+    .map(({ api, matched, missed }) => ({ api, matched, missed }));
+  return { words: tokens, hits };
 }
 
 /** "hotels" -> "hotel", so a plural query still matches a singular description. Leaves "news" and "class" alone. */

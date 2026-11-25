@@ -68,7 +68,13 @@ describe("search_apis / get_api", () => {
     expect(hit.text).toContain("- airbnb: Airbnb (airbnb.com)");
     expect(hit.text).not.toContain("- booking:");
     expect(hit.text).toContain("Other APIs in the catalog: booking, hurriyet.");
-    expect((await call("search_apis", { query: "flights" })).text).toContain("create_api");
+    const none = (await call("search_apis", { query: "flights" })).text;
+    expect(none).toContain("create_api");
+    expect(none).not.toContain("do not use an unrelated");
+    const partial = (await call("search_apis", { query: "accommodations in istanbul" })).text;
+    expect(partial).toContain('No API matches every word of "accommodations in istanbul"');
+    expect(partial).toContain('matches "accommodation", not "istanbul"');
+    expect(partial).toContain("usually a parameter");
   });
 
   it("describes endpoints, parameters and response fields", async () => {

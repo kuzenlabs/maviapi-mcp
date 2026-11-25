@@ -9,6 +9,7 @@ import {
   findEndpoint,
   hostOf,
   outlineOutput,
+  partialMatches,
   searchApis,
   toolName,
   truncate,
@@ -209,13 +210,7 @@ export class Toolset {
     const query = stringArg(args, "query");
     const apis = await this.client.listApis();
     const hits = searchApis(apis, query);
-    if (!hits.length) {
-      return text(
-        `No maviapi API covers "${query}". None of the ${apis.length} APIs in the catalog is about it, so do not use an unrelated one instead. ` +
-          "If the query names a site, create_api can build an API for it. For a topic, try one plain word (e.g. \"hotels\"), " +
-          "or call search_apis with no query to list the whole catalog.",
-      );
-    }
+    if (!hits.length) return text(noFullMatch(apis, query));
     const header = query ? `${hits.length} API(s) match "${query}":` : `${apis.length} APIs in the maviapi catalog:`;
     const lines = hits.map((api) => {
       const host = hostOf(api.target_url);
@@ -536,4 +531,35 @@ export class Toolset {
     }
     return tools;
   }
+}
+
+/**
+ * The answer when no API matches every word of the query: the closest partial
+ * matches, labelled as partial, or (when no word matches anything) a plain no.
+ * A place in the query is usually a parameter, not part of an API's name.
+ */
+function noFullMatch(apis: ApiSummary[], query: string | undefined): string {
+  const { words, hits } = partialMatches(apis, query);
+  if (!hits.length) {
+    return (
+      `No maviapi API covers "${query}". None of the ${apis.length} APIs in the catalog matches it. ` +
+      "If the query names a site, create_api can build an API for it. For a topic, try one plain word (e.g. \"hotels\"), " +
+      "or call search_apis with no query to list the whole catalog."
+    );
+  }
+  const quoted = (list: string[]) => list.map((w) => `"${w}"`).join(", ");
+  const best = hits[0]!.matched;
+  const lines = hits.map(({ api, matched, missed }) => {
+    const host = hostOf(api.target_url);
+    const description = truncate((api.description ?? "").trim(), 220);
+    const note = missed.length ? ` [matches ${quoted(matched)}, not ${quoted(missed)}]` : "";
+    return `- ${api.slug}: ${api.name}${host ? ` (${host})` : ""}${note}. ${description}`;
+  });
+  return [
+    `No API matches every word of "${query}" (${quoted(words)}). Closest, matching ${quoted(best)} (partial matches):`,
+    ...lines,
+    "",
+    "A city or place is usually a parameter of an API (a location, city or geo input), not part of its name: " +
+      "check a partial match with get_api, and use it only if it fits. If none fits, create_api can build an API for a site.",
+  ].join("\n");
 }

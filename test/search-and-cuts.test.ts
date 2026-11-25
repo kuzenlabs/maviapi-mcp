@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { outlineOutput, searchApis, type ApiSummary, type JsonSchema } from "../src/catalog.js";
+import { outlineOutput, partialMatches, searchApis, type ApiSummary, type JsonSchema } from "../src/catalog.js";
 import { fitAnswer } from "../src/result.js";
 
 const api = (slug: string, name: string, description: string, target_url: string): ApiSummary => ({
@@ -45,6 +45,57 @@ describe("searchApis (maviapi#1072)", () => {
 
   it("lists everything for an empty query", () => {
     expect(slugs("")).toHaveLength(CATALOG.length);
+  });
+});
+
+/** Event, stay and video APIs, for queries that name a place beside a topic. */
+const PLACES = [
+  api("bubilet", "Bubilet", "Concerts, theatre and other events in Turkey: listings, dates, venues and ticket prices.", "https://www.bubilet.com.tr"),
+  api("biletinial", "Biletinial", "Events, cinema and theatre tickets by city.", "https://biletinial.com"),
+  api("ticketing", "Ticketing", "Upcoming events near a location, with venue, date and category.", "https://tickets.example"),
+  api("tripadvisor", "Tripadvisor", "Trip-planning data: attractions, restaurants and hotels by geo_id.", "https://www.tripadvisor.com"),
+  api("booking", "Booking.com", "Search Booking.com hotels and accommodations by location and stay dates.", "https://www.booking.com"),
+  api("kiwi", "Kiwi.com", "Cheap flights between airports: fares, dates and routes.", "https://www.kiwi.com"),
+  api("youtube", "YouTube", "Video search, channels and the transcript of a video.", "https://www.youtube.com"),
+  api("hurriyet", "Hürriyet", "Latest Turkish news, a feed throughout the day without paywalls.", "https://www.hurriyet.com.tr"),
+];
+
+describe("partialMatches", () => {
+  const near = (query: string) => partialMatches(PLACES, query);
+
+  it("lists event APIs first when only the place is missing", () => {
+    for (const query of ["events istanbul", "istanbul events", "concerts in istanbul"]) {
+      expect(searchApis(PLACES, query)).toEqual([]);
+      const { hits } = near(query);
+      expect(hits.length).toBeGreaterThan(0);
+      expect(hits.length).toBeLessThanOrEqual(5);
+      expect(["bubilet", "biletinial", "ticketing"]).toContain(hits[0]!.api.slug);
+      expect(hits[0]!.missed).toContain("istanbul");
+      expect(hits[0]!.matched).toHaveLength(1);
+    }
+  });
+
+  it("finds hotel APIs for hotels in istanbul", () => {
+    const { words, hits } = near("hotels in istanbul");
+    expect(words).toEqual(["hotel", "istanbul"]);
+    expect(searchApis(PLACES, "hotels in istanbul")).toEqual([]);
+    expect(hits.map((h) => h.api.slug).slice(0, 2).sort()).toEqual(["booking", "tripadvisor"]);
+  });
+
+  it("leaves full matches to searchApis", () => {
+    expect(searchApis(PLACES, "flights").map((a) => a.slug)).toEqual(["kiwi"]);
+    expect(searchApis(PLACES, "youtube transcript").map((a) => a.slug)).toEqual(["youtube"]);
+  });
+
+  it("labels what a partial match covers for time out", () => {
+    expect(searchApis(PLACES, "time out")).toEqual([]);
+    const { hits } = near("time out");
+    for (const hit of hits) expect(hit.missed.length).toBeGreaterThan(0);
+  });
+
+  it("finds nothing for nonsense", () => {
+    expect(searchApis(PLACES, "xyzzy qwerty")).toEqual([]);
+    expect(near("xyzzy qwerty").hits).toEqual([]);
   });
 });
 
