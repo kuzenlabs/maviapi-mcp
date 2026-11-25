@@ -2,7 +2,9 @@ import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   DEFAULT_LIMIT,
   MissingParamsError,
+  buildQuery,
   describeParams,
+  fillPath,
   findApi,
   findEndpoint,
   hostOf,
@@ -15,7 +17,7 @@ import {
 } from "./catalog.js";
 import { MaviapiError, type CallResult, type MaviapiClient } from "./client.js";
 import { MAX_WAIT_SECONDS, REQUEST_TOOLS, RequestTools } from "./requests.js";
-import { MAX_RESULT_CHARS, UserError, failure, humanDuration, objectArg, stringArg, text } from "./result.js";
+import { MAX_RESULT_CHARS, UserError, failure, fitAnswer, humanDuration, objectArg, stringArg, text } from "./result.js";
 
 export { humanDuration };
 import {
@@ -67,7 +69,8 @@ const GENERIC_TOOLS: Tool[] = [
     description:
       "Fetch live, structured JSON from a website through a maviapi endpoint. " +
       "`api` is the API slug (or domain), `endpoint` the endpoint name or path from get_api, and `params` its parameters, path parameters such as {id} included. " +
-      `List endpoints return ${DEFAULT_LIMIT} results unless you pass \`limit\`; page with \`offset\`. Each successful call uses one maviapi credit.`,
+      `List endpoints return ${DEFAULT_LIMIT} results unless you pass \`limit\`; page with \`offset\`. Each successful call uses one maviapi credit. ` +
+      `An answer over ${MAX_RESULT_CHARS.toLocaleString("en-US")} characters is cut to whole rows here and flagged \`truncated\` (the HTTP API returns it in full).`,
     inputSchema: {
       type: "object",
       properties: {
@@ -80,7 +83,7 @@ const GENERIC_TOOLS: Tool[] = [
         },
         version: {
           type: "integer",
-          description: "Call this version of the API instead of the live one (see get_changelog). Rarely needed.",
+          description: "Call this build of the API instead of the live one. Only the API's owner can pick a build; anyone else gets the live one. Rarely needed.",
         },
       },
       required: ["api", "endpoint"],
@@ -208,8 +211,9 @@ export class Toolset {
     const hits = searchApis(apis, query);
     if (!hits.length) {
       return text(
-        `No catalog API matches "${query}". ${apis.length} APIs are available: call search_apis with no query to list them all. ` +
-          "If the site you need is missing, create_api can build an API for it.",
+        `No maviapi API covers "${query}". None of the ${apis.length} APIs in the catalog is about it, so do not use an unrelated one instead. ` +
+          "If the query names a site, create_api can build an API for it. For a topic, try one plain word (e.g. \"hotels\"), " +
+          "or call search_apis with no query to list the whole catalog.",
       );
     }
     const header = query ? `${hits.length} API(s) match "${query}":` : `${apis.length} APIs in the maviapi catalog:`;
@@ -227,7 +231,7 @@ export class Toolset {
     const apis = await this.client.listApis();
     const api = findApi(apis, ref);
     if (!api) {
-      const suggestions = searchApis(apis, ref).slice(0, 3).map((a) => a.slug);
+      const suggestions = searchApis(apis, ref, { loose: true }).slice(0, 3).map((a) => a.slug);
       throw new UserError(
         `No maviapi API named "${ref}".` +
           (suggestions.length ? ` Did you mean: ${suggestions.join(", ")}?` : " Use search_apis to find one.") +
@@ -264,7 +268,7 @@ export class Toolset {
       const params = describeParams(ep.inputSchema);
       out.push(params.length ? "Parameters:" : "Parameters: none");
       out.push(...params);
-      const fields = outlineOutput(ep.outputSchema, 25);
+      const fields = outlineOutput(ep.outputSchema);
       if (fields.length) out.push("Returns:", ...fields.map((f) => `  ${f}`));
     }
     const beingBuilt = building?.ok
@@ -295,7 +299,7 @@ export class Toolset {
     }
     const version = args.version === undefined || args.version === null ? undefined : Number(args.version);
     if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
-      throw new UserError("`version` must be a version number from get_changelog, e.g. 3.");
+      throw new UserError("`version` must be a build number of this API, e.g. 3. Leave it out to call the live build.");
     }
     return this.run(api.slug, endpoint, params, version);
   }
@@ -319,15 +323,20 @@ export class Toolset {
     const result = await this.client.call(slug, endpoint, params, version);
     if (!result.ok) return failure(this.describeFailure(result));
 
-    const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body);
-    let out = truncate(body, MAX_RESULT_CHARS, "pass a smaller limit, or page with offset");
+    const asked = Number(params.limit);
+    const filled = fillPath(endpoint.path, params);
+    const answer = fitAnswer(result.body, {
+      asked: Number.isFinite(asked) ? asked : undefined,
+      url: `${this.config.baseUrl}/v1/sites/${encodeURIComponent(slug)}${filled.path}${buildQuery(filled.query)}`,
+    });
     if (this.config.usingPlaygroundKey && !this.nudged) {
       this.nudged = true;
-      out +=
+      const first = answer.content[0] as { type: "text"; text: string };
+      first.text +=
         `\n\n(Served with maviapi's shared demo key, limited to ${PLAYGROUND_RATE_LIMIT} requests a minute. ` +
         `For a higher limit, create a free key at ${siteLink("/sign-up", "demo_key_notice")} and set MAVIAPI_API_KEY.)`;
     }
-    return text(out);
+    return answer;
   }
 
   private describeFailure({ status, body, retryAfter }: CallResult): string {

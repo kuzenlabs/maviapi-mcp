@@ -468,8 +468,36 @@ describe("list_requests / get_key_info / get_changelog", () => {
     const call = await connect(fetch.impl, {});
     const res = await call("get_changelog", { api: "booking" });
     expect(res.isError).toBe(false);
-    expect(res.text).toContain("- v3 (live, 2026-11-12): added /reviews");
-    expect(res.text).toContain("- v2 (superseded, breaking, 2026-10-01): fields removed: /search data.hotels[].stars");
+    expect(res.text).toContain("- 2026-11-12, build 3 (live): added /reviews");
+    expect(res.text).toContain("- 2026-10-01, build 2 (breaking): fields removed: /search data.hotels[].stars");
+  });
+
+  it("prints today's public changelog by date and title, never vundefined (maviapi#1072)", async () => {
+    const fetch = backend({
+      "GET /v1/apis/booking/changelog": () =>
+        Response.json({
+          api: { slug: "booking", name: "Booking.com" },
+          entries: [
+            {
+              id: "2026-11-23",
+              live: true,
+              compat: "compatible",
+              date: "2026-11-23T17:39:32.850Z",
+              title: "New endpoint /reviews is now available.",
+              notes: { summary: "New endpoint `/reviews`.", changes: [{ kind: "new", text: "`GET /reviews` returns reviews." }] },
+              diff: { added_endpoints: ["reviews"] },
+            },
+            { id: "2026-11-10", live: false, compat: "compatible", date: "2026-11-10T10:34:53.075Z", title: null, notes: null, diff: { added_endpoints: ["search"] } },
+          ],
+        }),
+    });
+    const call = await connect(fetch.impl, {});
+    const res = await call("get_changelog", { api: "booking" });
+    expect(res.isError).toBe(false);
+    expect(res.text).not.toContain("undefined");
+    expect(res.text).toContain("- 2026-11-23 (live): New endpoint /reviews is now available.");
+    expect(res.text).toContain("  - new: `GET /reviews` returns reviews.");
+    expect(res.text).toContain("- 2026-11-10: added search");
   });
 });
 

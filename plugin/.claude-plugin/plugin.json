@@ -1,7 +1,7 @@
 {
   "name": "maviapi",
   "description": "The unofficial API for any website, as tools: hosted JSON APIs for sites with no official API, plus APIs built on request for any site. Runs the @maviapi/mcp server.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "author": {
     "name": "KuzenLabs",
     "url": "https://maviapi.com"

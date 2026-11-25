@@ -2,7 +2,7 @@ import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { findEndpoint, truncate, type ApiSummary } from "./catalog.js";
 import type { CallResult, MaviapiClient } from "./client.js";
 import { siteLink, type Config } from "./config.js";
-import { MAX_RESULT_CHARS, UserError, failure, humanDuration, objectArg, stringArg, text } from "./result.js";
+import { UserError, failure, fitAnswer, humanDuration, objectArg, stringArg, text } from "./result.js";
 
 /**
  * The request tools: ask for an endpoint on an API that exists, follow its
@@ -173,7 +173,7 @@ export const REQUEST_TOOLS: Tool[] = [
     title: "Show this maviapi key",
     description:
       "What the configured API key may do: its permissions, the account's plan and remaining credits, and the limits that apply. " +
-      "Check it before starting something that needs a permission or uses credits. Needs an API key with a request permission.",
+      "Check it before starting something that needs a permission or uses credits. Works with any API key of your own.",
     inputSchema: { type: "object", properties: {} },
     annotations: READ,
   },
@@ -181,8 +181,8 @@ export const REQUEST_TOOLS: Tool[] = [
     name: "get_changelog",
     title: "Show a maviapi API's versions",
     description:
-      "Every version of an API, newest first: which is live, when it was built, and what changed (endpoints added or removed, fields changed). " +
-      "Use it when an endpoint behaves differently than before, or to pick a version for call_api's `version`.",
+      "What changed in an API, newest first: the date of each change, which one is live, and what it changed (endpoints added, fields changed, fixes). " +
+      "Use it when an endpoint behaves differently than before.",
     inputSchema: {
       type: "object",
       properties: {
@@ -276,6 +276,39 @@ export function describeDiff(diff: unknown): string {
     );
   }
   return parts.join("; ");
+}
+
+/**
+ * One entry of GET /v1/apis/:slug/changelog. Public entries carry a date id,
+ * `live`, a title and notes; build numbers and states are left out of them
+ * (maviapi#585). Older deployments sent `version` and `state`, read when there.
+ */
+export interface ChangelogEntry {
+  id?: string;
+  live?: boolean;
+  compat?: string;
+  date?: string;
+  title?: string | null;
+  notes?: { summary?: string; changes?: Array<{ kind?: string; text?: string }> } | null;
+  diff?: unknown;
+  version?: number;
+  state?: string;
+  hotfix_of?: number | null;
+}
+
+/** One changelog entry as a line, with its listed changes under it. */
+export function describeChange(e: ChangelogEntry): string[] {
+  const live = e.live ?? e.state === "active";
+  const tags = [live ? "live" : "", e.compat === "breaking" ? "breaking" : ""].filter(Boolean);
+  const when = (e.date ?? e.id ?? "").slice(0, 10);
+  const label = [when, typeof e.version === "number" ? `build ${e.version}` : ""].filter(Boolean).join(", ") || "undated";
+  const headline =
+    e.title?.trim() || e.notes?.summary?.trim() || (e.hotfix_of ? `Repair of build ${e.hotfix_of}.` : describeDiff(e.diff)) || "No details.";
+  const out = [`- ${label}${tags.length ? ` (${tags.join(", ")})` : ""}: ${headline}`];
+  for (const change of (e.notes?.changes ?? []).slice(0, 8)) {
+    if (change.text) out.push(`  - ${change.kind ? `${change.kind}: ` : ""}${change.text}`);
+  }
+  return out;
 }
 
 export interface RequestToolsDeps {
@@ -682,11 +715,12 @@ export class RequestTools {
       if (p.in === "path" && filled[p.name] === undefined && p.example) filled[p.name] = p.example;
     }
     const result = await this.client.callDraft(status.draft.id, shortPath(endpoint.path, status.slug), filled);
+    if (result.ok) {
+      const asked = Number(filled.limit);
+      return fitAnswer(result.body, { asked: Number.isFinite(asked) ? asked : undefined });
+    }
     const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body);
-    const out = truncate(body, MAX_RESULT_CHARS, "pass a smaller limit, or page with offset");
-    return result.ok
-      ? text(out)
-      : failure(`The draft answered ${result.status}: ${truncate(body, 2000)}`);
+    return failure(`The draft answered ${result.status}: ${truncate(body, 2000)}`);
   }
 
   private async publish(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -777,28 +811,15 @@ export class RequestTools {
     const api = await this.deps.resolveApi(stringArg(args, "api", true));
     const result = await this.client.changelog(api.slug);
     if (!result.ok) return failure(this.deps.describeFailure(result));
-    const entries = ((result.body as { entries?: unknown[] }).entries ?? []) as Array<{
-      version: number;
-      state: string;
-      compat?: string;
-      date?: string;
-      hotfix_of?: number | null;
-      diff?: unknown;
-    }>;
-    if (!entries.length) return text(`${api.name} (${api.slug}) has no recorded versions yet.`);
-    const lines = entries.slice(0, 30).map((e) => {
-      const tags = [e.state === "active" ? "live" : e.state, e.compat === "breaking" ? "breaking" : ""]
-        .filter(Boolean)
-        .join(", ");
-      const changes = e.hotfix_of ? `repair of v${e.hotfix_of}` : describeDiff(e.diff);
-      return `- v${e.version} (${tags}${e.date ? `, ${e.date.slice(0, 10)}` : ""})${changes ? `: ${changes}` : ""}`;
-    });
+    const entries = ((result.body as { entries?: unknown[] }).entries ?? []) as ChangelogEntry[];
+    if (!entries.length) return text(`${api.name} (${api.slug}) has no recorded changes yet.`);
+    const lines = entries.slice(0, 30).flatMap(describeChange);
     return text(
       [
-        `${api.name} (${api.slug}) versions, newest first:`,
+        `${api.name} (${api.slug}) changes, newest first:`,
         ...lines,
         "",
-        'call_api serves the live version; pass "version": <n> to call another one that is still callable.',
+        "call_api always serves the live build.",
       ].join("\n"),
     );
   }

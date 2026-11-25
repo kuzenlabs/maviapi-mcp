@@ -141,7 +141,11 @@ describe("rendering", () => {
   });
 
   it("caps the outline", () => {
-    expect(outlineOutput(bookingSearch.outputSchema, 2)).toEqual(["data.count: integer", "data.hotels[].name: string", "…"]);
+    expect(outlineOutput(bookingSearch.outputSchema, 2)).toEqual([
+      "data.count: integer",
+      "data.hotels[].name: string",
+      "… and 2 more fields",
+    ]);
   });
 
   it("joins description fragments with exactly one period", () => {

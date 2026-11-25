@@ -265,32 +265,67 @@ export function findEndpoint(endpoints: Endpoint[], ref: string): Endpoint | und
   );
 }
 
-/** Rank catalog APIs against a free-text query. An empty query lists them all. */
-export function searchApis(apis: ApiSummary[], query: string | undefined): ApiSummary[] {
+/** Query words that say nothing about which API is meant. */
+const STOP_WORDS = new Set([
+  "a", "an", "the", "of", "in", "on", "at", "for", "to", "from", "by", "with", "and", "or",
+  "api", "apis", "data", "site", "website", "com", "www",
+]);
+
+/**
+ * A score an API reaches only through its slug, name or site (not its
+ * description alone). With it an API is kept even when some query words miss.
+ */
+export const STRONG_MATCH = 4;
+
+/** Lowercase words of a text: letters and digits in any script, split at everything else. */
+function words(text: string): string[] {
+  return text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(singular);
+}
+
+/**
+ * Rank catalog APIs against a free-text query. An empty query lists them all.
+ *
+ * Query words match whole words (not parts of words, so "out" does not match
+ * "without"), and an API is kept only when every query word matches it
+ * somewhere, or one matches its slug, name or site. A query no API answers
+ * returns nothing, rather than every API that shares a word with it.
+ * `loose` keeps any API that matches one word: for "did you mean" hints.
+ */
+export function searchApis(apis: ApiSummary[], query: string | undefined, opts: { loose?: boolean } = {}): ApiSummary[] {
   const q = (query ?? "").trim().toLowerCase();
   if (!q) return [...apis];
-  const tokens = q.split(/\s+/).filter((t) => t.length > 1);
   const queryHost = hostOf(q);
+  const all = words(q).filter((t) => t.length > 1);
+  const meaningful = all.filter((t) => !STOP_WORDS.has(t));
+  const tokens = meaningful.length ? meaningful : all;
 
   const scored = apis.map((api) => {
     const slug = api.slug.toLowerCase();
-    const name = api.name.toLowerCase();
+    const slugWords = new Set(words(slug));
     const host = hostOf(api.target_url) ?? "";
-    const description = (api.description ?? "").toLowerCase();
+    const hostWords = new Set(words(host));
+    const nameWords = new Set(words(api.name));
+    const descriptionWords = new Set(words(api.description ?? ""));
     let score = queryHost && queryHost === host ? 20 : 0;
-    for (const token of tokens.map(singular)) {
-      if (slug === token) score += 10;
-      else if (slug.includes(token)) score += 5;
-      if (host.includes(token)) score += 5;
-      if (name.includes(token)) score += 4;
-      if (description.includes(token)) score += 1;
+    let matched = 0;
+    for (const token of tokens) {
+      let hit = 0;
+      if (slug === token) hit += 10;
+      else if (slugWords.has(token) || (token.length >= 4 && slug.includes(token))) hit += 5;
+      if (hostWords.has(token) || (token.length >= 4 && host.includes(token))) hit += 5;
+      if (nameWords.has(token)) hit += 4;
+      if (descriptionWords.has(token)) hit += 1;
+      if (hit) matched++;
+      score += hit;
     }
-    return { api, score };
+    const kept = opts.loose || score >= STRONG_MATCH || (tokens.length > 0 && matched === tokens.length);
+    return { api, score: kept ? score : 0, matched };
   });
 
+  // An API that matches more of the query's words ranks first, then the higher score.
   return scored
     .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.matched - a.matched || b.score - a.score)
     .map((s) => s.api);
 }
 
@@ -325,14 +360,15 @@ export function describeParams(schema: ToolInputSchema): string[] {
 /**
  * Flatten a response schema into `path: type` lines (`data.items[].price:
  * number`), so an agent knows which fields come back without reading a full
- * JSON Schema document.
+ * JSON Schema document. Past `maxLines`, one last line says how many fields
+ * were left out.
  */
-export function outlineOutput(schema: JsonSchema | null, maxLines = 40, maxDepth = 5): string[] {
+export function outlineOutput(schema: JsonSchema | null, maxLines = OUTLINE_MAX_LINES, maxDepth = 5): string[] {
   if (!schema) return [];
   const lines: string[] = [];
   const walk = (node: JsonSchema, prefix: string, depth: number) => {
     for (const [key, child] of Object.entries(node.properties ?? {})) {
-      if (lines.length >= maxLines) return;
+      if (lines.length > OUTLINE_HARD_CAP) return;
       const path = prefix ? `${prefix}.${key}` : key;
       if (child.properties && depth < maxDepth) {
         walk(child, path, depth + 1);
@@ -344,9 +380,19 @@ export function outlineOutput(schema: JsonSchema | null, maxLines = 40, maxDepth
     }
   };
   walk(schema, "", 0);
-  if (lines.length >= maxLines) lines.push("…");
-  return lines;
+  if (lines.length <= maxLines) return lines;
+  const left = lines.length - maxLines;
+  const more = lines.length > OUTLINE_HARD_CAP ? `${left}+` : String(left);
+  return [...lines.slice(0, maxLines), `… and ${more} more field${left === 1 ? "" : "s"}`];
 }
+
+/**
+ * Response fields get_api lists per endpoint. Endpoints return a few dozen
+ * fields; a full list keeps an agent from guessing at the ones it cannot see.
+ */
+export const OUTLINE_MAX_LINES = 200;
+/** Stop walking a schema past this many fields. */
+const OUTLINE_HARD_CAP = 1000;
 
 /** MCP tool names allow [A-Za-z0-9_-], up to 64 characters. */
 export function toolName(apiSlug: string, endpointSlug: string): string {
