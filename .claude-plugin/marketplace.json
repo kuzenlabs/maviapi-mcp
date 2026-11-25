@@ -5,14 +5,14 @@
     "url": "https://maviapi.com"
   },
   "metadata": {
-    "description": "Claude Code plugin for maviapi: live, structured JSON from websites that have no API.",
+    "description": "Claude Code plugin for maviapi, the unofficial API for any website.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "maviapi",
       "source": "./plugin",
-      "description": "Live JSON from sites with no API (Booking.com, Airbnb, Tripadvisor, Kiwi.com and more), plus agent-built APIs for any site.",
+      "description": "The unofficial API for any website, as tools: hosted JSON APIs for sites with no official API, plus APIs built on request for any site.",
       "category": "data",
       "homepage": "https://maviapi.com"
     }
