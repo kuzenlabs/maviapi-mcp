@@ -4,7 +4,7 @@ import { MaviapiClient } from "./client.js";
 import { VERSION, type Config } from "./config.js";
 import { Toolset } from "./tools.js";
 
-const INSTRUCTIONS = `maviapi gives you live, structured JSON from websites that have no official API (travel, e-commerce, news, events, finance and more).
+const INSTRUCTIONS = `maviapi is the unofficial API for any website: live, structured JSON from websites that have no official API (travel, e-commerce, news, events, finance and more).
 Workflow: search_apis to find an API for a site or topic, get_api to read its endpoints and parameters, then call_api to fetch data.
 If no API covers the site you need, create_api builds one (about half an hour; follow it with get_build_status).
 If an API exists but lacks an endpoint, or you need one to behave differently, request_endpoint adds one: preview it, let the user agree, start it with confirm: true, follow it with get_build_status (wait_seconds), try it with call_draft, and publish_request when the user wants it live.
