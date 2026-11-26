@@ -81,19 +81,16 @@ export class MaviapiClient {
     return this.send("GET", `/v1/requests/${encodeURIComponent(id)}`);
   }
 
-  /** Call one endpoint through the maviapi gateway, on the live build or on `version`. */
+  /** Call one endpoint through the maviapi gateway, on the live build. */
   async call(
     slug: string,
     endpoint: Endpoint,
     params: Record<string, unknown>,
-    version?: number,
   ): Promise<CallResult> {
     const { path, query } = fillPath(endpoint.path, params);
     return this.send(
       endpoint.method,
       `/v1/sites/${encodeURIComponent(slug)}${path}${buildQuery(query)}`,
-      undefined,
-      version === undefined ? {} : { "x-maviapi-version": String(version) },
     );
   }
 

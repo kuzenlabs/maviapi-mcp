@@ -116,7 +116,7 @@ describe("request_endpoint", () => {
       change: "search",
       description: "Search, with the price of every result.",
     });
-    expect(res.text).toContain("GET /search-v2 (a changed version of GET /search, which stays as it is)");
+    expect(res.text).toContain("GET /search-v2 (a change to GET /search, which stays as it is)");
     expect(res.text).toContain("GET /photos is being built for this API right now");
     const sent = fetch.calls.find((c) => c.method === "POST")!;
     expect(JSON.parse(sent.body!)).toMatchObject({ of: "/search", dryRun: true });
@@ -522,16 +522,6 @@ describe("get_api and call_api extras", () => {
     expect(res.text).not.toContain("Status: operational");
     expect(res.text).toContain("Being built right now: GET /reviews.");
     expect(res.text).toContain("request_endpoint adds an endpoint");
-  });
-
-  it("calls a chosen version with the version header", async () => {
-    const fetch = backend({});
-    const call = await connect(fetch.impl);
-    await call("call_api", { api: "booking", endpoint: "search", params: { location: "Istanbul" }, version: 2 });
-    const sent = fetch.calls.find((c) => c.url.pathname === "/v1/sites/booking/search")!;
-    expect(sent.headers.get("x-maviapi-version")).toBe("2");
-    const bad = await call("call_api", { api: "booking", endpoint: "search", params: { location: "Istanbul" }, version: "latest" });
-    expect(bad.isError).toBe(true);
   });
 });
 

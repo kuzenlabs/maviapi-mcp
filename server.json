@@ -3,7 +3,7 @@
   "name": "io.github.kuzenlabs/maviapi-mcp",
   "title": "maviapi",
   "description": "The unofficial API for any website: hosted JSON APIs for sites with no official API, as MCP tools.",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "websiteUrl": "https://maviapi.com",
   "repository": {
     "url": "https://github.com/kuzenlabs/maviapi-mcp",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@maviapi/mcp",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "transport": {
         "type": "stdio"
       },
