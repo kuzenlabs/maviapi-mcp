@@ -82,10 +82,6 @@ const GENERIC_TOOLS: Tool[] = [
           description: "Endpoint parameters, as listed by get_api.",
           additionalProperties: true,
         },
-        version: {
-          type: "integer",
-          description: "Call this build of the API instead of the live one. Only the API's owner can pick a build; anyone else gets the live one. Rarely needed.",
-        },
       },
       required: ["api", "endpoint"],
     },
@@ -292,11 +288,7 @@ export class Toolset {
           `get_api "${api.slug}" lists their parameters.`,
       );
     }
-    const version = args.version === undefined || args.version === null ? undefined : Number(args.version);
-    if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
-      throw new UserError("`version` must be a build number of this API, e.g. 3. Leave it out to call the live build.");
-    }
-    return this.run(api.slug, endpoint, params, version);
+    return this.run(api.slug, endpoint, params);
   }
 
   /** Call an endpoint and turn the outcome into something an agent can act on. */
@@ -304,7 +296,6 @@ export class Toolset {
     slug: string,
     endpoint: Endpoint,
     input: Record<string, unknown>,
-    version?: number,
   ): Promise<CallToolResult> {
     const params = { ...input };
     if ("limit" in endpoint.inputSchema.properties && params.limit === undefined) {
@@ -315,7 +306,7 @@ export class Toolset {
     );
     if (missing.length) throw new MissingParamsError(missing);
 
-    const result = await this.client.call(slug, endpoint, params, version);
+    const result = await this.client.call(slug, endpoint, params);
     if (!result.ok) return failure(this.describeFailure(result));
 
     const asked = Number(params.limit);

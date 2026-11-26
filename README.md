@@ -102,7 +102,7 @@ Leave out `env` to try it with the demo key.
 | `call_api` | Call an endpoint and get live JSON back. List endpoints return 10 results unless you pass `limit`. An answer over 50,000 characters is cut to whole rows and flagged `truncated` (rows returned, rows asked); the HTTP API itself never cuts. |
 | `create_api` | No API for the site you need? Starts a build from a URL and a plain-language description, and returns a `request_id`. |
 | `get_build_status` | Where a build is: its phase, each endpoint with its test results or what went wrong, and what the build said last. `wait_seconds` returns as soon as something changes. A finished build is not public until it is published. |
-| `request_endpoint` | Add one endpoint to an API that exists, or a changed version of one (it ships beside the old one, e.g. `/search-v2`). Previews first; `confirm: true` starts the build. |
+| `request_endpoint` | Add one endpoint to an API that exists, or a change to one (it ships beside the old one, e.g. `/search-v2`). Previews first; `confirm: true` starts the build. |
 | `list_requests` | Your API and endpoint requests, with their status. |
 | `send_request_message` | Tell a build something in plain words: add detail, fix or drop a failed endpoint, try again. |
 | `call_draft` | Call an endpoint of a draft before it is published. Costs no credits. |

@@ -27,7 +27,7 @@ export const REQUEST_TOOLS: Tool[] = [
     name: "request_endpoint",
     title: "Ask for a new maviapi endpoint",
     description:
-      "Add one endpoint to an API that already exists, or a changed version of one of its endpoints. " +
+      "Add one endpoint to an API that already exists, or a change to one of its endpoints. " +
       "Use it when get_api shows the API lacks the data, or an endpoint returns the wrong thing. " +
       "Existing endpoints never change: a change ships as a new endpoint beside the old one (e.g. /search-v2). " +
       "Without `confirm` nothing is built: the tool answers with the endpoint as it would be built, for the user to agree to. " +
@@ -50,7 +50,7 @@ export const REQUEST_TOOLS: Tool[] = [
         },
         change: {
           type: "string",
-          description: 'For a changed version of an existing endpoint: that endpoint\'s name or path, e.g. "/search". Use instead of `path`.',
+          description: 'For a change to an existing endpoint: that endpoint\'s name or path, e.g. "/search". Use instead of `path`.',
         },
         confirm: { type: "boolean", description: "true starts the build. Leave it out to preview first." },
       },
@@ -142,7 +142,7 @@ export const REQUEST_TOOLS: Tool[] = [
     title: "Report a broken maviapi endpoint",
     description:
       "Tell maviapi that an endpoint that exists returns the wrong thing: it fails, comes back empty, or repeats the same page. " +
-      "Use this instead of asking for a changed version when the endpoint is simply broken: the fix lands on the endpoint itself, for everyone. " +
+      "Use this instead of asking for a change when the endpoint is simply broken: the fix lands on the endpoint itself, for everyone. " +
       "maviapi replays the call at once and then runs its own check of the endpoint. If that check fails too the report is confirmed and the endpoint is queued for repair; " +
       "if not (a fault only certain parameters show, a repeated page, wrong values) a person on the team reads the report. " +
       "A report's status is confirmed, fixed or received. " +
@@ -179,7 +179,7 @@ export const REQUEST_TOOLS: Tool[] = [
   },
   {
     name: "get_changelog",
-    title: "Show a maviapi API's versions",
+    title: "Show what changed in a maviapi API",
     description:
       "What changed in an API, newest first: the date of each change, which one is live, and what it changed (endpoints added, fields changed, fixes). " +
       "Use it when an endpoint behaves differently than before.",
@@ -406,7 +406,7 @@ export class RequestTools {
     const change = stringArg(args, "change");
     if (!path && !change) {
       throw new UserError(
-        'Pass `path` for a new endpoint (e.g. "/reviews"), or `change` with an existing endpoint to get a changed version of it.',
+        'Pass `path` for a new endpoint (e.g. "/reviews"), or `change` with an existing endpoint to get a change to it.',
       );
     }
     if (path && change) throw new UserError("Pass `path` or `change`, not both.");
@@ -447,7 +447,7 @@ export class RequestTools {
       const endpoint = (body.endpoint ?? {}) as { path?: string; summary?: string; of?: string };
       const out = [
         `Nothing has been built yet. This would add to ${api.name} (${api.slug}):`,
-        `  GET ${endpoint.path}${endpoint.of ? ` (a changed version of GET ${endpoint.of}, which stays as it is)` : ""}`,
+        `  GET ${endpoint.path}${endpoint.of ? ` (a change to GET ${endpoint.of}, which stays as it is)` : ""}`,
         `  ${endpoint.summary}`,
         "",
         "Show this to the user. If they agree, call request_endpoint again with the same arguments and confirm: true.",
@@ -533,7 +533,7 @@ export class RequestTools {
           ? "Nothing more to do: the endpoint keeps its path, so the same call works once it is repaired. " +
             "get_api shows the endpoint's health; report_endpoint_issue with no arguments shows where this report stands."
           : "If the fault only shows with certain parameters, they are in the report for the person who reads it. " +
-            "If you need different behavior rather than a fix, request_endpoint with `change` builds a new version beside this one.",
+            "If you need different behavior rather than a fix, request_endpoint with `change` builds the change beside this one.",
       ].join("\n"),
     );
   }
