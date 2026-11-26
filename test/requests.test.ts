@@ -671,4 +671,28 @@ describe("report_endpoint_issue", () => {
     const none = await connect(backend({ [LIST]: () => Response.json({ reports: [] }) }).impl);
     expect((await none("report_endpoint_issue")).text).toContain("No endpoint has been reported");
   });
+
+  it("list_reports shows the status and the team's reply", async () => {
+    const fetch = backend({
+      [LIST]: () =>
+        Response.json({
+          reports: [
+            {
+              ...CONFIRMED,
+              status: "not_a_bug",
+              message: "A person on the team read your report and found the endpoint answers as it should. Their reply says why.",
+              reply: "The prices follow your region.\nPass currency=EUR.",
+              resolvedAt: "2026-11-27T10:00:00.000Z",
+            },
+            { ...CONFIRMED, id: "er_2", status: "received", message: "A person on the team will read your report.", reply: null },
+          ],
+        }),
+    });
+    const call = await connect(fetch.impl);
+    const res = await call("list_reports");
+    expect(res.text).toContain("er_1  booking GET /search  not_a_bug");
+    expect(res.text).toContain("Reply from the team (2026-11-27): The prices follow your region. Pass currency=EUR.");
+    expect(res.text).toContain("er_2  booking GET /search  received");
+    expect(res.text.match(/Reply from the team/g)).toHaveLength(1);
+  });
 });

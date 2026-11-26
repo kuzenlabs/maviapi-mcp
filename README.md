@@ -109,6 +109,7 @@ Leave out `env` to try it with the demo key.
 | `publish_request` | Make a finished request live. Needs a key with the `requests:publish` permission. |
 | `cancel_request` | Stop the build running for a request. |
 | `report_endpoint_issue` | Report an endpoint that fails, comes back empty or repeats the same page. maviapi replays the call and checks the endpoint itself: a fault its own check confirms is repaired in place, the rest go to a person. You can report an API you have called with your own key. With no arguments it lists your reports. |
+| `list_reports` | Your endpoint reports: the status (confirmed, received, fixed, not a bug, won't fix, duplicate) and the team's reply once a person has answered. |
 | `get_key_info` | What the configured key may do: permissions, plan, remaining credits, limits. Works with any key of your own, with or without permissions. |
 | `get_changelog` | What changed in an API, newest first: the date of each change, which one is live, and what it changed. |
 

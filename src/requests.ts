@@ -145,9 +145,9 @@ export const REQUEST_TOOLS: Tool[] = [
       "Use this instead of asking for a change when the endpoint is simply broken: the fix lands on the endpoint itself, for everyone. " +
       "maviapi replays the call at once and then runs its own check of the endpoint. If that check fails too the report is confirmed and the endpoint is queued for repair; " +
       "if not (a fault only certain parameters show, a repeated page, wrong values) a person on the team reads the report. " +
-      "A report's status is confirmed, fixed or received. " +
+      "A report's status is confirmed, fixed or received, and once a person on the team has answered it: fixed, not_a_bug, wont_fix or duplicate, with their reply. " +
       "Report what you saw: maviapi takes a report of an API only from an account that has called it with its own key, so make the failing call with call_api first, then pass its `params` here. " +
-      "Without `endpoint` and `description` it lists the reports made with this key. " +
+      "list_reports shows where your reports stand (so does this tool without `endpoint` and `description`). " +
       "Needs an API key with the requests:write permission (any request permission to list).",
     inputSchema: {
       type: "object",
@@ -172,6 +172,16 @@ export const REQUEST_TOOLS: Tool[] = [
       },
     },
     annotations: WRITE,
+  },
+  {
+    name: "list_reports",
+    title: "List your maviapi endpoint reports",
+    description:
+      "The endpoint reports made with this key's account, newest first: the API and endpoint, the status, and the team's reply when a person has answered. " +
+      "Status: confirmed (maviapi's own check fails too, a repair is under way), received (a person reads it), fixed, not_a_bug, wont_fix or duplicate. " +
+      "Needs an API key with a request permission (requests:write or requests:publish).",
+    inputSchema: { type: "object", properties: {} },
+    annotations: READ,
   },
   {
     name: "get_key_info",
@@ -370,6 +380,8 @@ export class RequestTools {
         return this.cancel(args);
       case "report_endpoint_issue":
         return this.reportIssue(args);
+      case "list_reports":
+        return this.listReports();
       case "get_key_info":
         return this.keyInfo();
     }
@@ -565,10 +577,17 @@ export class RequestTools {
     if (rows.length === 0) return text("No endpoint has been reported with this key's account.");
     return text(
       rows
-        .map(
-          (r) =>
-            `${String(r.id)}  ${String(r.slug)} GET ${String(r.path)}  ${String(r.status)}\n  ${describeReport(r)}`,
-        )
+        .map((r) => {
+          const lines = [
+            `${String(r.id)}  ${String(r.slug)} GET ${String(r.path)}  ${String(r.status)}`,
+            `  ${describeReport(r)}`,
+          ];
+          if (typeof r.reply === "string" && r.reply) {
+            const when = typeof r.resolvedAt === "string" ? ` (${r.resolvedAt.slice(0, 10)})` : "";
+            lines.push(`  Reply from the team${when}: ${r.reply.replace(/\n+/g, " ")}`);
+          }
+          return lines.join("\n");
+        })
         .join("\n"),
     );
   }
