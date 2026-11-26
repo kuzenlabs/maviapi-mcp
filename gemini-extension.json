@@ -1,6 +1,6 @@
 {
   "name": "maviapi",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "The unofficial API for any website: hosted JSON APIs for sites with no official API, as tools, plus APIs built on request for any site.",
   "mcpServers": {
     "maviapi": {
