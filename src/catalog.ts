@@ -48,14 +48,18 @@ export interface SchemaDoc {
 export interface RawEndpoint {
   slug: string;
   path: string;
+  /** Derived from the path by the backend (backend/worker/src/endpoint-name.ts). */
+  name?: string;
   method: string;
   description: string | null;
   versions?: SchemaDoc[];
 }
 
 export interface Endpoint {
-  /** Stable, tool-safe name derived from the catalog slug (see endpointName). */
+  /** Tool-safe name derived from the path (see endpointName), never the slug (#1090). */
   name: string;
+  /** The name older clients knew, derived from the slug; still accepted by findEndpoint. */
+  legacyName: string;
   slug: string;
   path: string;
   method: string;
@@ -75,34 +79,67 @@ const HIDDEN_PARAMS = new Set(["refresh"]);
 /** Results per page when an agent omits `limit`: endpoints default to 50, which floods a context window. */
 export const DEFAULT_LIMIT = 10;
 
-/** Path parameter names, in order. Accepts both `/items/{id}` and `/items/:id`. */
+/**
+ * Path parameter names, in order. Accepts `/items/{id}`, `/items/:id`, and a
+ * `{param}` inside a segment (`/events/{city}-v2`): a live endpoint shipped
+ * before the manifest gate refused that shape, and a call that leaves the
+ * placeholder in the URL answers 502 (#1074).
+ */
 export function pathParams(path: string): string[] {
-  return path
-    .split("/")
-    .map(paramName)
-    .filter((name): name is string => name !== null);
+  return path.split("/").flatMap(segmentParams);
 }
 
+const BRACED = /\{([^{}/]+)\}/g;
+
+function segmentParams(segment: string): string[] {
+  if (segment.startsWith(":") && segment.length > 1) return [segment.slice(1)];
+  return [...segment.matchAll(BRACED)].map((m) => m[1] as string);
+}
+
+/** The one parameter a segment is, or null when it is a literal or has text beside it. */
 function paramName(segment: string): string | null {
   if (segment.startsWith(":") && segment.length > 1) return segment.slice(1);
-  if (segment.startsWith("{") && segment.endsWith("}") && segment.length > 2) {
-    return segment.slice(1, -1);
-  }
-  return null;
+  const m = /^\{([^{}/]+)\}$/.exec(segment);
+  return m ? (m[1] as string) : null;
 }
 
 /**
- * A readable endpoint name. Catalog slugs are inconsistent: some are a bare
- * word ("hotel" for /hotel/{country}/{slug}), others the route itself
- * ("listing/:id"). Static segments are kept and parameters become a `_by_`
- * suffix, so /templates and /templates/:id stay distinct.
+ * The name older clients knew, derived from the catalog slug: some slugs are a
+ * bare word ("hotel" for /hotel/{country}/{slug}), others the route itself
+ * ("listing/:id"). Kept only so a name an agent saved still resolves.
  */
-export function endpointName(slug: string): string {
+export function slugName(slug: string): string {
   const parts = slug.split("/").filter(Boolean);
   const words = parts.filter((p) => paramName(p) === null);
   const params = parts.map(paramName).filter((p): p is string => p !== null);
   const base = words.join("-") || "root";
   return params.length ? `${base}_by_${params.join("_and_")}` : base;
+}
+
+/**
+ * The endpoint's name, from its PATH (#1090), the same rule as the backend's
+ * backend/worker/src/endpoint-name.ts (the catalog sends it as `name`; this is
+ * the fallback). Literal segments are kept, params become a `_by_` suffix:
+ * "/events-v2/{city}" is "events-v2_by_city". A param glued to text keeps the
+ * text without braces: "/events/{city}-v2" is "events-city-v2_by_city".
+ */
+export function endpointName(path: string, method = "GET"): string {
+  const words: string[] = [];
+  const params: string[] = [];
+  for (const seg of (path.split("?")[0] ?? "").split("/").filter(Boolean)) {
+    const whole = /^\{(\w+)\}$/.exec(seg) ?? /^:(\w+)$/.exec(seg);
+    if (whole) {
+      params.push(whole[1] as string);
+      continue;
+    }
+    for (const m of seg.matchAll(/\{(\w+)\}/g)) params.push(m[1] as string);
+    const text = seg.replace(/[{}]/g, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (text) words.push(text.toLowerCase());
+  }
+  const base = words.join("-") || "root";
+  const name = params.length ? `${base}_by_${params.join("_and_")}` : base;
+  const verb = method.toUpperCase();
+  return verb === "GET" || verb === "HEAD" ? name : `${verb.toLowerCase()}-${name}`;
 }
 
 export class MissingParamsError extends Error {
@@ -121,16 +158,18 @@ export function fillPath(
 ): { path: string; query: Record<string, unknown> } {
   const query = { ...params };
   const missing: string[] = [];
-  const segments = path.split("/").map((segment) => {
-    const name = paramName(segment);
-    if (name === null) return segment;
+  const fill = (name: string, whole: string): string => {
     const value = query[name];
     delete query[name];
     if (value === undefined || value === null || value === "") {
       missing.push(name);
-      return segment;
+      return whole;
     }
     return encodeURIComponent(String(value));
+  };
+  const segments = path.split("/").map((segment) => {
+    if (segment.startsWith(":") && segment.length > 1) return fill(segment.slice(1), segment);
+    return segment.replace(BRACED, (whole, name: string) => fill(name, whole));
   });
   if (missing.length) throw new MissingParamsError(missing);
   return { path: segments.join("/"), query };
@@ -220,7 +259,8 @@ export function normalizeEndpoint(raw: RawEndpoint): Endpoint {
   if (required.length) inputSchema.required = required;
 
   return {
-    name: endpointName(raw.slug),
+    name: raw.name || endpointName(raw.path, raw.method),
+    legacyName: slugName(raw.slug),
     slug: raw.slug,
     path: raw.path,
     method: raw.method.toUpperCase(),
@@ -255,13 +295,14 @@ export function findApi(apis: ApiSummary[], ref: string): ApiSummary | undefined
   );
 }
 
-/** Resolve an endpoint by name, catalog slug, or path (leading slash optional). */
+/** Resolve an endpoint by name, path (leading slash optional), catalog slug, or a name older clients knew. */
 export function findEndpoint(endpoints: Endpoint[], ref: string): Endpoint | undefined {
   const r = ref.trim().toLowerCase().replace(/^\/+/, "");
   return (
     endpoints.find((e) => e.name.toLowerCase() === r) ??
+    endpoints.find((e) => e.path.toLowerCase().replace(/^\/+/, "") === r) ??
     endpoints.find((e) => e.slug.toLowerCase() === r) ??
-    endpoints.find((e) => e.path.toLowerCase().replace(/^\/+/, "") === r)
+    endpoints.find((e) => e.legacyName.toLowerCase() === r)
   );
 }
 

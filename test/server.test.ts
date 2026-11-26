@@ -46,8 +46,8 @@ describe("tool list", () => {
   it("adds typed per-endpoint tools for MAVIAPI_TOOLS", async () => {
     const { client } = await connect({ MAVIAPI_TOOLS: "booking, nosuchapi" });
     const { tools } = await client.listTools();
-    const hotel = tools.find((t) => t.name === "booking_hotel");
-    expect(tools.map((t) => t.name)).toEqual([...GENERIC, ...REQUEST, "booking_search", "booking_hotel"]);
+    const hotel = tools.find((t) => t.name === "booking_hotel_by_country_and_slug");
+    expect(tools.map((t) => t.name)).toEqual([...GENERIC, ...REQUEST, "booking_search", "booking_hotel_by_country_and_slug"]);
     expect(hotel?.inputSchema.required).toEqual(["country", "slug"]);
     expect(tools.find((t) => t.name === "booking_search")?.description).toContain("Returns 10 results");
   });
@@ -85,7 +85,7 @@ describe("search_apis / get_api", () => {
     expect(text).toContain("## search: GET /search");
     expect(text).toContain('- location (string, required): City or region. Example: "Istanbul"');
     expect(text).toContain("data.hotels[].price: number");
-    expect(text).toContain("## hotel: GET /hotel/{country}/{slug}");
+    expect(text).toContain("## hotel_by_country_and_slug: GET /hotel/{country}/{slug}");
     expect(text).not.toContain("refresh");
   });
 
@@ -162,7 +162,7 @@ describe("call_api", () => {
     const { call } = await connect();
     const res = await call("call_api", { api: "booking", endpoint: "reviews" });
     expect(res.isError).toBe(true);
-    expect(res.text).toContain("Available: search, hotel");
+    expect(res.text).toContain("Available: search, hotel_by_country_and_slug");
   });
 
   it("turns the demo key's rate limit into a sign-up pointer", async () => {
