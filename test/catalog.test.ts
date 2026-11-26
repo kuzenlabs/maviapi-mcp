@@ -42,13 +42,11 @@ describe("pathParams / fillPath", () => {
 });
 
 describe("endpointName", () => {
-  it("turns inconsistent catalog slugs into distinct, readable names", () => {
-    expect(endpointName("search")).toBe("search");
-    expect(endpointName("hotel")).toBe("hotel");
-    expect(endpointName("listing/:id")).toBe("listing_by_id");
-    expect(endpointName("templates/:id")).toBe("templates_by_id");
-    expect(endpointName("transformations/:category/:name")).toBe("transformations_by_category_and_name");
-    expect(endpointName("blog/categories")).toBe("blog-categories");
+  it("names an endpoint by its path, as the backend does", () => {
+    expect(endpointName("/search")).toBe("search");
+    expect(endpointName("/listing/:id")).toBe("listing_by_id");
+    expect(endpointName("/transformations/{category}/{name}")).toBe("transformations_by_category_and_name");
+    expect(endpointName("/blog/categories")).toBe("blog-categories");
   });
 });
 
@@ -176,5 +174,19 @@ describe("rendering", () => {
     expect(truncate("abcdef", 10)).toBe("abcdef");
     expect(truncate("abcdef", 4)).toBe("abc…");
     expect(truncate("abcdef", 4, "page it")).toBe("abcd\n…[truncated: page it]");
+  });
+});
+
+describe("endpoint names (#1090)", () => {
+  it("uses the catalog's name, falls back to the path rule, and still resolves old slugs", async () => {
+    const { normalizeEndpoint, findEndpoint } = await import("../src/catalog.js");
+    const eps = [
+      normalizeEndpoint({ slug: "events-v2", path: "/events/{city}-v2", method: "get", description: null }),
+      normalizeEndpoint({ slug: "events-v2-city", path: "/events-v2/{city}", method: "get", description: null, name: "events-v2_by_city" }),
+    ];
+    expect(eps.map((e) => e.name)).toEqual(["events-city-v2_by_city", "events-v2_by_city"]);
+    expect(findEndpoint(eps, "events-v2_by_city")?.path).toBe("/events-v2/{city}");
+    expect(findEndpoint(eps, "events-v2")?.path).toBe("/events/{city}-v2");
+    expect(findEndpoint(eps, "/events-v2/{city}")?.path).toBe("/events-v2/{city}");
   });
 });

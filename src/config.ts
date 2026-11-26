@@ -1,4 +1,4 @@
-export const VERSION = "0.2.6";
+export const VERSION = "0.2.7";
 
 export const DEFAULT_BASE_URL = "https://api.maviapi.com";
 export const SITE_URL = "https://maviapi.com";
