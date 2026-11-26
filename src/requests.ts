@@ -164,6 +164,11 @@ export const REQUEST_TOOLS: Tool[] = [
           description: 'The parameters of a call that shows the fault, e.g. {"geo": "187147", "page": 2}.',
           additionalProperties: true,
         },
+        request_id: {
+          type: "string",
+          description:
+            "Optional: the x-request-id header of the failed call, so the team can find that exact call in its logs.",
+        },
       },
     },
     annotations: WRITE,
@@ -225,6 +230,17 @@ export interface RequestStatus {
   draft?: { id: string; baseUrl: string } | null;
   live?: { version: string; baseUrl: string } | null;
   error?: string | null;
+  /** Why a failed request failed (maviapi#1140): never null on a failure. */
+  resultCode?: string | null;
+  failure?: { step?: string; code?: string; message?: string; reason?: string } | null;
+}
+
+/** "The build stopped at the build step (build_failed): <message>." with the code, message and step the backend gives. */
+export function stoppedLine(s: Pick<RequestStatus, "error" | "resultCode" | "failure">): string {
+  const step = s.failure?.step;
+  const code = s.failure?.code ?? s.resultCode;
+  const message = (s.failure?.message ?? s.error ?? "no reason given").trim();
+  return `The build stopped${step ? ` at the ${step} step` : ""}${code ? ` (${code})` : ""}: ${message}${/[.!?]$/.test(message) ? "" : "."}`;
 }
 
 const RUNNING = new Set(["queued", "reading", "mapping", "building", "testing"]);
@@ -503,10 +519,12 @@ export class RequestTools {
       );
     }
     const params = objectArg(args, "params");
+    const requestId = typeof args.request_id === "string" ? args.request_id.trim() : "";
     const result = await this.client.reportEndpoint(api.slug, {
       path: endpoint.path,
       description,
       ...(Object.keys(params).length > 0 && { params }),
+      ...(requestId && { request_id: requestId }),
     });
     const body = payloadOf(result);
     if (!result.ok) {
@@ -652,7 +670,7 @@ export class RequestTools {
       );
     } else if (s.phase === "failed") {
       out.push(
-        `The build stopped: ${s.error ?? "no reason given"}. ` +
+        `${stoppedLine(s)} ` +
           'send_request_message "try again" builds it again; a narrower description may build where this did not.',
       );
     } else {

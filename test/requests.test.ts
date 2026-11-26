@@ -393,13 +393,20 @@ describe("publish_request / cancel_request / send_request_message", () => {
   it("cancels a running build", async () => {
     const fetch = backend({
       "POST /v1/me/requests/req-9/cancel": () =>
-        Response.json({ ...STATUS, phase: "failed", state: "cccc3333", error: "This build was cancelled." }),
+        Response.json({
+          ...STATUS,
+          phase: "failed",
+          state: "cccc3333",
+          error: "This build was cancelled.",
+          resultCode: "cancelled",
+          failure: { step: "build", code: "cancelled", message: "This build was cancelled." },
+        }),
     });
     const call = await connect(fetch.impl);
     const res = await call("cancel_request", { request_id: "req-9" });
     expect(res.isError).toBe(false);
     expect(res.text).toContain("Cancelled.");
-    expect(res.text).toContain("The build stopped: This build was cancelled.");
+    expect(res.text).toContain("The build stopped at the build step (cancelled): This build was cancelled. send_request_message");
   });
 
   it("relays a message and the build's answer", async () => {
@@ -578,6 +585,19 @@ describe("report_endpoint_issue", () => {
       description: "offset=50 returns the same stays as offset=0.",
       params: { location: "Istanbul", offset: 50 },
     });
+  });
+
+  it("passes the x-request-id of the failed call through", async () => {
+    const fetch = backend({ [REPORT]: () => Response.json(CONFIRMED, { status: 201 }) });
+    const call = await connect(fetch.impl);
+    await call("report_endpoint_issue", {
+      api: "booking",
+      endpoint: "search",
+      description: "offset=50 returns the same stays as offset=0.",
+      request_id: " req_abc123 ",
+    });
+    const sent = JSON.parse(fetch.calls.find((c) => c.method === "POST")!.body!);
+    expect(sent.request_id).toBe("req_abc123");
   });
 
   it("points at a changed version when the report was not reproduced", async () => {
